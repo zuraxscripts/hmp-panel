@@ -388,13 +388,15 @@ def _update_panel_version(version: str):
     _save_panel_config(cfg)
 
 
-def _update_happiness_info(version: str, zip_url: str):
+def _update_happiness_info(version: str, zip_url: str, release_date: str = ''):
     if not version:
         return
     cfg = _load_server_config()
     cfg['happiness_version'] = str(version)
     if zip_url:
         cfg['happiness_zip_url'] = str(zip_url)
+    if release_date:
+        cfg['happiness_release_date'] = str(release_date)
     _save_server_config(cfg)
 
 
@@ -431,7 +433,7 @@ def perform_panel_update(panel_zip_url: str, panel_version: str, start_pct: int,
     _log('Panel update finished')
 
 
-def perform_happiness_update(happiness_zip_url: str, happiness_version: str, start_pct: int, end_pct: int):
+def perform_happiness_update(happiness_zip_url: str, happiness_version: str, start_pct: int, end_pct: int, release_date: str = ''):
     _log('Starting HappinessMP update')
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -489,7 +491,7 @@ def perform_happiness_update(happiness_zip_url: str, happiness_version: str, sta
     except Exception:
         pass
 
-    _update_happiness_info(happiness_version, happiness_zip_url)
+    _update_happiness_info(happiness_version, happiness_zip_url, release_date)
     _set_status(progress=end_pct)
     _log('HappinessMP update finished')
 
@@ -582,10 +584,11 @@ def main():
             happ = job.get('happiness') or {}
             happ_zip = happ.get('zip_url')
             happ_ver = happ.get('version')
+            happ_date = happ.get('release_date') or ''
             if not happ_zip:
                 raise RuntimeError('Happiness update requested but zip_url missing')
             start_pct, end_pct = ranges.get('happiness', (5, 95))
-            perform_happiness_update(happ_zip, happ_ver, start_pct, end_pct)
+            perform_happiness_update(happ_zip, happ_ver, start_pct, end_pct, happ_date)
 
         _set_status(progress=100, step='Done', finished=True, success=True, running=False)
         _log('Update completed successfully')

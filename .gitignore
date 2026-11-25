@@ -1,1 +1,42 @@
-/__pycache__
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+
+# --- Runtime data & secrets (never publish) ---
+data/
+panel_config.json
+server_config.json
+templates/pfp/
+*.log
+logs/
+*.tmp
+*.bak
+*.key
+
+# --- HappinessMP server runtime (downloaded binary, resources, addons) ---
+HPNMP/
+
+# --- Frontend ---
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- Environment ---
+.env
+.env.*
+!.env.example
+
+# --- Editors / OS junk ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

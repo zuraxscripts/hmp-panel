@@ -1,0 +1,190 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@layer base {
+  :root,
+  .dark,
+  [data-theme="dark"] {
+    color-scheme: dark;
+
+    --white: #ffffff;
+    --black: #000000;
+    --snow: #fafafa;
+    --eclipse: #09090b;
+
+    --background: #000000;
+    --foreground: #ffffff;
+
+    --surface: #0a0a0a;
+    --surface-foreground: #ffffff;
+    --surface-secondary: #121212;
+    --surface-secondary-foreground: #ffffff;
+    --surface-tertiary: #1a1a1a;
+    --surface-tertiary-foreground: #ffffff;
+
+    --overlay: #0c0c0c;
+    --overlay-foreground: #ffffff;
+
+    --default: #18181b;
+    --default-foreground: #fafafa;
+
+    --accent: #ffffff;
+    --accent-foreground: #000000;
+    --accent-hover: #e4e4e7;
+
+    --success: #ffffff;
+    --success-foreground: #000000;
+    --warning: #d4d4d8;
+    --warning-foreground: #000000;
+    --danger: #ffffff;
+    --danger-foreground: #000000;
+
+    --muted: #a1a1aa;
+    --border: rgba(255, 255, 255, 0.12);
+    --border-secondary: rgba(255, 255, 255, 0.18);
+    --border-tertiary: rgba(255, 255, 255, 0.26);
+    --separator: rgba(255, 255, 255, 0.10);
+
+    --field-background: #0d0d0d;
+    --field-foreground: #ffffff;
+    --field-placeholder: #71717a;
+    --field-border: rgba(255, 255, 255, 0.15);
+    --field-border-width: 1px;
+    --field-hover: #141414;
+    --field-focus: #0a0a0a;
+    --field-border-hover: rgba(255, 255, 255, 0.28);
+    --field-border-focus: rgba(255, 255, 255, 0.6);
+
+    --focus: rgba(255, 255, 255, 0.45);
+    --radius: 0.75rem;
+    --field-radius: 0.75rem;
+
+    --surface-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.65);
+    --overlay-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 50px rgba(0, 0, 0, 0.85);
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background-color: #000000;
+    color: #ffffff;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Guaranteed Monochrome Contrast for HeroUI v3 Components */
+.button--primary {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #ffffff !important;
+}
+.button--primary:hover:not(:disabled):not([data-disabled="true"]) {
+  background-color: #e4e4e7 !important;
+  border-color: #e4e4e7 !important;
+  color: #000000 !important;
+}
+
+.button--secondary {
+  background-color: #18181b !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+.button--secondary:hover:not(:disabled):not([data-disabled="true"]) {
+  background-color: #27272a !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+.button--outline {
+  background-color: transparent !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+}
+.button--outline:hover:not(:disabled):not([data-disabled="true"]) {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #ffffff !important;
+}
+
+.button--ghost {
+  background-color: transparent !important;
+  color: #d4d4d8 !important;
+}
+.button--ghost:hover:not(:disabled):not([data-disabled="true"]) {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+/* Tabs contrast: selected tab over white indicator must have black text */
+.tabs__tab {
+  color: #a1a1aa !important;
+  transition: color 0.15s ease;
+}
+.tabs__tab:hover {
+  color: #ffffff !important;
+}
+.tabs__tab[data-selected="true"],
+.tabs__tab[aria-selected="true"] {
+  color: #000000 !important;
+  font-weight: 600 !important;
+}
+.tabs__indicator {
+  background-color: #ffffff !important;
+}
+
+/* Switch contrast */
+.switch__control {
+  background-color: #27272a !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+}
+.switch[data-selected="true"] .switch__control,
+.switch__control[data-selected="true"] {
+  background-color: #ffffff !important;
+  border-color: #ffffff !important;
+}
+.switch__thumb {
+  background-color: #ffffff !important;
+}
+.switch[data-selected="true"] .switch__thumb,
+.switch__control[data-selected="true"] .switch__thumb {
+  background-color: #000000 !important;
+}
+
+/* Checkbox contrast */
+.checkbox__control {
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  background-color: #111111 !important;
+}
+.checkbox[data-selected="true"] .checkbox__control,
+.checkbox__control[data-selected="true"] {
+  background-color: #ffffff !important;
+  border-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Chip contrast */
+.chip.bg-white {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.chip.bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.10) !important;
+  color: #d4d4d8 !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.30);
+}

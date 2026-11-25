@@ -298,7 +298,8 @@ Runtime environment variables:
 | `HAPPINESS_DB_NAME` | `happinessmp` | Database name |
 | `HPM_UPDATE_CONFIG_URL` | empty | Optional remote update config JSON |
 | `HPM_PANEL_REPO` | `zuraxscripts/hmp-panel` | GitHub repo for panel update checks |
-| `HPM_HAPPINESS_UPDATE_URL` | default | HappinessMP update metadata URL override |
+| `HPM_HAPPINESS_UPDATE_URL` | default | Fallback HappinessMP metadata URL |
+| `HPM_HAPPINESS_DOCS_URL` | `https://happinessmp.net/docs/server/getting-started` | Docs page scraped for the latest server download |
 | `HPM_UPDATE_INTERVAL_MINUTES` | `10` | Background update check interval |
 
 ### Repository Files
@@ -313,7 +314,7 @@ Runtime environment variables:
 | [`requirements.txt`](./requirements.txt) | Python dependencies |
 | [`panel_version.json`](./panel_version.json) | Current panel version |
 | [`update_config.json`](./update_config.json) | Default update sources |
-| [`happiness_update.json`](./happiness_update.json) | HappinessMP update metadata |
+| [`happiness_update.json`](./happiness_update.json) | Fallback HappinessMP update metadata |
 | [`egg-hmp-happinessmp.json`](./egg-hmp-happinessmp.json) | Pterodactyl egg |
 | [`templates/`](./templates) | Panel pages and UI assets |
 | [`locales/`](./locales) | English and Czech translations |
@@ -336,7 +337,7 @@ HMP Panel can check and apply updates for:
 | Target | Source |
 | --- | --- |
 | Panel | GitHub repository from `update_config.json` or `HPM_PANEL_REPO` |
-| HappinessMP server | Archive URL from `happiness_update.json` or `HPM_HAPPINESS_UPDATE_URL` |
+| HappinessMP server | Latest `Linux` archive link scraped from `HPM_HAPPINESS_DOCS_URL` (happinessmp.net docs); `happiness_update.json` is only a fallback |
 
 The updater stores state in `data/update_status.json`, `data/update_job.json`, and `data/update.log`.
 

@@ -1,0 +1,487 @@
+import React, { useEffect, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
+import {
+  Avatar,
+  Button,
+  Chip,
+  Input,
+  Label,
+  Modal,
+  Separator,
+  TextField,
+} from '@heroui/react';
+import {
+  BarChart3,
+  Boxes,
+  FileText,
+  FolderOpen,
+  LogOut,
+  Menu,
+  MoreHorizontal,
+  Puzzle,
+  Settings,
+  Shield,
+  Terminal,
+  UserCog,
+  Users,
+  X,
+} from 'lucide-react';
+import { apiFetch, createTranslator, loadLocale, LocaleMap } from '../lib/api';
+import { CurrentUser, PageId, PlayerEntry, ServerStatus } from './dashboard/types';
+import { OverviewTab } from './dashboard/OverviewTab';
+import { ConsoleTab } from './dashboard/ConsoleTab';
+import { FilesTab } from './dashboard/FilesTab';
+import { ResourcesTab } from './dashboard/ResourcesTab';
+import { SettingsTab } from './dashboard/SettingsTab';
+import { LogsTab } from './dashboard/LogsTab';
+import { PlayersTab } from './dashboard/PlayersTab';
+import { AdminTab } from './dashboard/AdminTab';
+
+export function DashboardPage() {
+  const [locale, setLocale] = useState<LocaleMap>({});
+  const t = createTranslator(locale);
+
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [activePage, setActivePage] = useState<PageId>('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const [status, setStatus] = useState<ServerStatus>({
+    running: false,
+    pid: null,
+    uptime: 0,
+    auto_restart: false,
+    restart_count: 0,
+    cpu: 0,
+    memory: 0,
+    attached: false,
+  });
+  const [consoleLines, setConsoleLines] = useState<string[]>([]);
+  const [players, setPlayers] = useState<PlayerEntry[]>([]);
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [wsConnected, setWsConnected] = useState(true);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  function notify(msg: string) {
+    setToastMsg(msg);
+    window.setTimeout(() => {
+      setToastMsg((prev) => (prev === msg ? null : prev));
+    }, 3200);
+  }
+
+  async function refreshStatus() {
+    const data = await apiFetch('/api/status');
+    if (data && typeof data.running === 'boolean') setStatus(data);
+  }
+
+  async function refreshPlayers() {
+    const data = await apiFetch('/api/players');
+    if (Array.isArray(data.players)) setPlayers(data.players);
+  }
+
+  useEffect(() => {
+    loadLocale('en').then(setLocale);
+
+    apiFetch('/api/current-user').then((u) => {
+      if (u && u.username) {
+        setUser(u);
+        setDisplayName(u.display_name || u.username);
+      }
+    });
+
+    apiFetch('/api/panel-locale').then((cfg) => {
+      if (cfg && cfg.locale) loadLocale(cfg.locale).then(setLocale);
+    });
+
+    refreshStatus();
+    refreshPlayers();
+    apiFetch('/api/console').then((d) => {
+      if (Array.isArray(d.lines)) setConsoleLines(d.lines);
+    });
+    apiFetch('/api/update-status').then((d) => {
+      if (d) setUpdateInfo(d);
+    });
+
+    const socket: Socket = io();
+    socket.on('connect', () => setWsConnected(true));
+    socket.on('disconnect', () => setWsConnected(false));
+    socket.on('connect_error', () => setWsConnected(false));
+    socket.on('server_status', (d) => {
+      if (d) setStatus((prev) => ({ ...prev, running: !!d.running }));
+    });
+    socket.on('stats_update', (d) => {
+      if (d) setStatus((prev) => ({ ...prev, ...d }));
+    });
+    socket.on('console_history', (d) => {
+      if (d && Array.isArray(d.lines)) setConsoleLines(d.lines);
+    });
+    socket.on('console_update', (d) => {
+      if (d && typeof d.line === 'string') {
+        setConsoleLines((prev) => [...prev.slice(-800), d.line]);
+      }
+    });
+    socket.on('players_update', (d) => {
+      if (d && Array.isArray(d.players)) setPlayers(d.players);
+    });
+    socket.on('update_status', (d) => {
+      if (d) setUpdateInfo(d);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  async function handleServerAction(action: 'start' | 'stop' | 'restart') {
+    const res = await apiFetch(`/api/${action}`, { method: 'POST' });
+    notify(res.message || `${action} sent`);
+    refreshStatus();
+  }
+
+  async function handleUpdateNow() {
+    const res = await apiFetch('/api/update', { method: 'POST' });
+    notify(res.message || 'Update started');
+  }
+
+  async function handleSendCommand(command: string) {
+    const res = await apiFetch('/api/command', {
+      method: 'POST',
+      body: JSON.stringify({ command }),
+    });
+    if (!res.success && res.message) notify(res.message);
+  }
+
+  async function handleLogout() {
+    await apiFetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login';
+  }
+
+  async function handleSaveProfile() {
+    const res = await apiFetch('/api/profile', {
+      method: 'POST',
+      body: JSON.stringify({ display_name: displayName }),
+    });
+    if (newPassword.trim()) {
+      await apiFetch('/api/profile/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ password: newPassword }),
+      });
+      setNewPassword('');
+    }
+    notify(res.message || 'Profile updated');
+    setProfileOpen(false);
+    setUser((prev) => (prev ? { ...prev, display_name: displayName } : prev));
+  }
+
+  const perms = user?.permissions || {};
+  const isAdmin = user?.role === 'admin';
+
+  const navGroups: {
+    group: string;
+    items: { id: PageId; label: string; icon: React.ReactNode; visible: boolean }[];
+  }[] = [
+    {
+      group: 'Server',
+      items: [
+        { id: 'dashboard', label: t('nav_dashboard', 'Dashboard'), icon: <BarChart3 className="w-4 h-4" />, visible: true },
+        { id: 'console', label: t('nav_console', 'Console'), icon: <Terminal className="w-4 h-4" />, visible: perms.can_view_console !== false },
+        { id: 'players', label: t('nav_players', 'Players'), icon: <Users className="w-4 h-4" />, visible: true },
+      ],
+    },
+    {
+      group: 'Management',
+      items: [
+        { id: 'files', label: t('nav_files', 'Files'), icon: <FolderOpen className="w-4 h-4" />, visible: perms.can_manage_files !== false },
+        { id: 'resources', label: t('nav_resources', 'Resources'), icon: <Puzzle className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_resources },
+        { id: 'addons', label: t('nav_addons', 'Addons'), icon: <Boxes className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_addons },
+      ],
+    },
+    {
+      group: 'System',
+      items: [
+        { id: 'settings', label: t('nav_settings', 'Settings'), icon: <Settings className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_settings },
+        { id: 'logs', label: t('nav_logs', 'Logs'), icon: <FileText className="w-4 h-4" />, visible: true },
+        { id: 'admin', label: t('nav_admin', 'Admin'), icon: <Shield className="w-4 h-4" />, visible: isAdmin },
+      ],
+    },
+  ];
+
+  const allNavItems = navGroups.flatMap((g) => g.items);
+
+  const SidebarContent = (
+    <div className="flex flex-col h-full p-4 gap-4 bg-[#050505] border-r border-white/10">
+      <div className="flex items-center justify-between py-1 px-1">
+        <img src="/logo.png" alt="HappinessMP" className="w-40 h-auto grayscale contrast-110" />
+        <Button
+          size="sm"
+          isIconOnly
+          variant="ghost"
+          onPress={() => setMobileMenuOpen(false)}
+          className="lg:hidden rounded-lg"
+          aria-label="Close menu"
+        >
+          <X className="w-4 h-4" />
+        </Button>
+      </div>
+
+      <Separator className="bg-white/10" />
+
+      <nav className="flex flex-col gap-4 flex-1 overflow-y-auto pr-0.5">
+        {navGroups.map((group) => {
+          const visibleItems = group.items.filter((i) => i.visible);
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={group.group} className="flex flex-col gap-1">
+              <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                {group.group}
+              </div>
+              {visibleItems.map((item) => {
+                const active = activePage === item.id;
+                return (
+                  <Button
+                    key={item.id}
+                    variant={active ? 'primary' : 'ghost'}
+                    onPress={() => {
+                      setActivePage(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full justify-start gap-2.5 h-9 px-3 rounded-xl text-xs font-semibold"
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </Button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </nav>
+
+      <Separator className="bg-white/10" />
+
+      <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#0b0b0b] border border-white/10">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Avatar size="sm" className="bg-white text-black font-bold shrink-0">
+            {user?.avatar_url && <Avatar.Image src={user.avatar_url} alt={user.display_name} />}
+            <Avatar.Fallback className="bg-white text-black text-xs font-bold">
+              {(user?.display_name || user?.username || 'A').slice(0, 2).toUpperCase()}
+            </Avatar.Fallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-white truncate">
+              {user?.display_name || user?.username || '...'}
+            </div>
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{user?.role || 'user'}</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-0.5">
+          <Button
+            size="sm"
+            isIconOnly
+            variant="ghost"
+            onPress={() => setProfileOpen(true)}
+            aria-label="User settings"
+            className="rounded-lg"
+          >
+            <UserCog className="w-4 h-4" />
+          </Button>
+          <Button
+            size="sm"
+            isIconOnly
+            variant="ghost"
+            onPress={handleLogout}
+            aria-label="Logout"
+            className="rounded-lg"
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const mobileQuickTabs: { id: PageId; label: string; icon: React.ReactNode }[] = [
+    { id: 'dashboard', label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
+    { id: 'console', label: 'Console', icon: <Terminal className="w-4 h-4" /> },
+    { id: 'files', label: 'Files', icon: <FolderOpen className="w-4 h-4" /> },
+    { id: 'players', label: 'Players', icon: <Users className="w-4 h-4" /> },
+  ];
+
+  return (
+    <div className="min-h-screen bg-black text-white flex">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:block w-[264px] shrink-0 sticky top-0 h-screen">
+        {SidebarContent}
+      </aside>
+
+      {/* Mobile Slide-Over Drawer */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          <div className="w-[272px] h-full relative z-10 shadow-2xl">{SidebarContent}</div>
+          <div className="flex-1 bg-black/80 backdrop-blur-xs" onClick={() => setMobileMenuOpen(false)} />
+        </div>
+      )}
+
+      {/* Main Content */}
+      <main className="flex-1 min-w-0 flex flex-col pb-20 lg:pb-6">
+        <header className="sticky top-0 z-30 bg-black/85 backdrop-blur-md border-b border-white/10 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Button
+              size="sm"
+              isIconOnly
+              variant="ghost"
+              onPress={() => setMobileMenuOpen(true)}
+              className="lg:hidden rounded-xl shrink-0"
+              aria-label="Menu"
+            >
+              <Menu className="w-4 h-4" />
+            </Button>
+            <h1 className="text-sm sm:text-base font-bold tracking-tight text-white capitalize truncate">
+              {allNavItems.find((n) => n.id === activePage)?.label || activePage}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!wsConnected && (
+              <Chip size="sm" className="bg-white/10 border border-white/25 text-white text-[11px]">
+                Reconnecting...
+              </Chip>
+            )}
+            <Chip
+              size="sm"
+              className={
+                status.running
+                  ? 'bg-white text-black font-semibold text-[11px]'
+                  : 'bg-white/10 text-zinc-400 border border-white/15 text-[11px]'
+              }
+            >
+              {status.running ? 'Online' : 'Offline'}
+            </Chip>
+          </div>
+        </header>
+
+        <div className="p-3.5 sm:p-6 max-w-[1400px] w-full mx-auto">
+          {activePage === 'dashboard' && (
+            <OverviewTab
+              status={status}
+              playerCount={players.length}
+              consoleLines={consoleLines}
+              updateInfo={updateInfo}
+              canControl={isAdmin || perms.can_control_server !== false}
+              canSend={isAdmin || perms.can_send_commands !== false}
+              t={t}
+              onAction={handleServerAction}
+              onRefresh={refreshStatus}
+              onUpdateNow={handleUpdateNow}
+              onClearConsole={() => setConsoleLines([])}
+              onSendCommand={handleSendCommand}
+              onNavigate={setActivePage}
+            />
+          )}
+
+          {activePage === 'console' && (
+            <ConsoleTab
+              lines={consoleLines}
+              canSend={isAdmin || perms.can_send_commands !== false}
+              t={t}
+              onClear={() => setConsoleLines([])}
+              onSendCommand={handleSendCommand}
+              onNotify={notify}
+            />
+          )}
+
+          {activePage === 'files' && <FilesTab t={t} onNotify={notify} />}
+
+          {activePage === 'resources' && <ResourcesTab kind="resources" t={t} onNotify={notify} />}
+
+          {activePage === 'addons' && <ResourcesTab kind="addons" t={t} onNotify={notify} />}
+
+          {activePage === 'settings' && <SettingsTab t={t} onNotify={notify} />}
+
+          {activePage === 'logs' && <LogsTab t={t} onNotify={notify} />}
+
+          {activePage === 'players' && (
+            <PlayersTab
+              players={players}
+              t={t}
+              onRefreshPlayers={refreshPlayers}
+              onNotify={notify}
+            />
+          )}
+
+          {activePage === 'admin' && <AdminTab t={t} onNotify={notify} />}
+        </div>
+      </main>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 lg:hidden bg-[#070707]/95 backdrop-blur-md border-t border-white/12 px-2 py-1.5 grid grid-cols-5 gap-1">
+        {mobileQuickTabs.map((tab) => {
+          const active = activePage === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActivePage(tab.id)}
+              className={`flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-xl text-[10px] font-semibold transition-colors cursor-pointer ${
+                active ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(true)}
+          className="flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-xl text-[10px] font-semibold text-zinc-400 hover:text-white cursor-pointer"
+        >
+          <MoreHorizontal className="w-4 h-4" />
+          <span>More</span>
+        </button>
+      </nav>
+
+      {/* Profile Modal */}
+      <Modal isOpen={profileOpen} onOpenChange={setProfileOpen}>
+        <Modal.Backdrop className="bg-black/80 backdrop-blur-sm">
+          <Modal.Container size="sm">
+            <Modal.Dialog className="bg-[#0a0a0a] border border-white/15 rounded-2xl text-white">
+              <Modal.Header className="border-b border-white/10 px-5 py-4">
+                <Modal.Heading className="text-sm font-bold text-white">User Profile</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body className="p-5 flex flex-col gap-3.5">
+                <TextField value={displayName} onChange={setDisplayName}>
+                  <Label className="text-xs text-zinc-300 mb-1.5">Display Name</Label>
+                  <Input className="bg-[#111111] border border-white/15 text-white rounded-xl" />
+                </TextField>
+                <TextField value={newPassword} onChange={setNewPassword}>
+                  <Label className="text-xs text-zinc-300 mb-1.5">New Password (optional)</Label>
+                  <Input type="password" className="bg-[#111111] border border-white/15 text-white rounded-xl" />
+                </TextField>
+              </Modal.Body>
+              <Modal.Footer className="border-t border-white/10 px-5 py-3 flex justify-end gap-2">
+                <Button variant="secondary" onPress={() => setProfileOpen(false)} className="rounded-xl">
+                  Cancel
+                </Button>
+                <Button variant="primary" onPress={handleSaveProfile} className="rounded-xl font-semibold">
+                  Save
+                </Button>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
+
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div className="fixed bottom-20 lg:bottom-5 right-4 sm:right-5 z-50 bg-white text-black px-4 py-2.5 rounded-xl text-xs font-semibold shadow-2xl border border-white/20">
+          {toastMsg}
+        </div>
+      )}
+    </div>
+  );
+}

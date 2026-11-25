@@ -19,8 +19,10 @@ import string
 import shutil
 import zipfile
 import urllib.request
+import urllib.parse
 import tempfile
 import re
+import html as html_lib
 import stat
 import logging
 import xml.etree.ElementTree as ET
@@ -341,6 +343,9 @@ DEFAULT_PANEL_REPO = 'zuraxscripts/hmp-panel'
 DEFAULT_UPDATE_CONFIG_URL = f'https://raw.githubusercontent.com/zuraxscripts/hmp-panel/{BRANCH}/update_config.json'
 DEFAULT_HAPPINESS_UPDATE_URL = f'https://raw.githubusercontent.com/zuraxscripts/hmp-panel/{BRANCH}/happiness_update.json'
 DEFAULT_UPDATE_INTERVAL_MINUTES = 30
+
+HAPPINESS_DOCS_URL = (os.getenv('HPM_HAPPINESS_DOCS_URL') or 'https://happinessmp.net/docs/server/getting-started').strip()
+HAPPINESS_PLATFORM = 'linux'
 
 update_state = {
     'checking': False,
@@ -2623,9 +2628,20 @@ def ensure_server_files():
                 _setup_update(message=f'HappinessMP version detected: {detected}')
         return
 
+    _setup_update(step='Resolving server release', message='Looking up latest HappinessMP server release...')
+    release = None
+    try:
+        release = _resolve_happiness_release()
+    except Exception:
+        release = None
+    server_zip_url = (release or {}).get('zip_url') or SETUP_SERVER_ZIP_URL
+    release_date = (release or {}).get('updated') or ''
+    release_version = (release or {}).get('version') or _guess_version_from_url(server_zip_url) or 'latest'
+    safe_version = re.sub(r'[^0-9A-Za-z._-]+', '_', str(release_version))
+
     _setup_update(step='Downloading server files', message='Downloading HappinessMP server files...')
-    zip_path = SETUP_DOWNLOAD_DIR / 'HappinessMP_Server_1.8.7_Linux.zip'
-    downloaded_url = _download_with_progress(SETUP_SERVER_ZIP_URL, zip_path, 25, 55, 'Server files')
+    zip_path = SETUP_DOWNLOAD_DIR / f'HappinessMP_Server_{safe_version}_{HAPPINESS_PLATFORM}.zip'
+    downloaded_url = _download_with_progress(server_zip_url, zip_path, 25, 55, 'Server files')
 
     extract_dir = SETUP_DOWNLOAD_DIR / 'server_extract'
     if extract_dir.exists():
@@ -2657,7 +2673,7 @@ def ensure_server_files():
     except Exception:
         pass
 
-    original_zip_url = str(SETUP_SERVER_ZIP_URL or '').strip()
+    original_zip_url = str(server_zip_url or '').strip()
     resolved_zip_url = str(downloaded_url or original_zip_url or '').strip()
     
     detected_version = _guess_version_from_url(original_zip_url)
@@ -2675,7 +2691,7 @@ def ensure_server_files():
     if not detected_version:
         detected_version = '2.0'
 
-    _persist_local_happiness_info(detected_version, resolved_zip_url or SETUP_SERVER_ZIP_URL)
+    _persist_local_happiness_info(detected_version, resolved_zip_url or server_zip_url, release_date)
 
     if detected_version:
         _setup_update(message=f'Server files ready (HappinessMP {detected_version})')
@@ -2857,10 +2873,11 @@ def _is_unknown_version_value(version: str) -> bool:
     return val in ('', '0', '0.0', '0.0.0', 'v0', 'v0.0', 'v0.0.0')
 
 
-def _persist_local_happiness_info(version: str = '', zip_url: str = ''):
+def _persist_local_happiness_info(version: str = '', zip_url: str = '', release_date: str = ''):
     global config
     version = str(version or '').strip()
     zip_url = str(zip_url or '').strip()
+    release_date = str(release_date or '').strip()
 
     if not config:
         config = storage.load_config()
@@ -2869,6 +2886,7 @@ def _persist_local_happiness_info(version: str = '', zip_url: str = ''):
 
     current_version = str(config.get('happiness_version') or '').strip()
     current_zip = str(config.get('happiness_zip_url') or '').strip()
+    current_date = str(config.get('happiness_release_date') or '').strip()
     changed = False
 
     if version and current_version != version:
@@ -2877,10 +2895,22 @@ def _persist_local_happiness_info(version: str = '', zip_url: str = ''):
     if zip_url and current_zip != zip_url:
         config['happiness_zip_url'] = zip_url
         changed = True
+    if release_date and current_date != release_date:
+        config['happiness_release_date'] = release_date
+        changed = True
 
     if changed:
         storage.save_config(config)
     return changed
+
+
+def _local_happiness_release_date() -> str:
+    global config
+    try:
+        cfg = config if isinstance(config, dict) and config else storage.load_config()
+    except Exception:
+        cfg = config or {}
+    return str((cfg or {}).get('happiness_release_date') or '').strip()
 
 
 def _load_happiness_local_info():
@@ -2900,12 +2930,16 @@ def _load_happiness_local_info():
     if not version:
         version = defaults['version']
 
-    return {'version': version, 'zip_url': zip_url}
+    return {'version': version, 'zip_url': zip_url, 'release_date': _local_happiness_release_date()}
 
 
 def _guess_version_from_url(url: str) -> str:
     if not url:
         return ''
+    try:
+        url = urllib.parse.unquote(str(url))
+    except Exception:
+        pass
     match = re.search(r'(\d+\.\d+(?:\.\d+)?)', str(url))
     return match.group(1) if match else ''
 
@@ -2939,6 +2973,97 @@ def _fetch_json(url: str):
         raw = resp.read()
         text = raw.decode('utf-8-sig')
         return json.loads(text)
+
+
+def _fetch_text(url: str, timeout: int = 15) -> str:
+    req = urllib.request.Request(url, headers={'User-Agent': 'HPM-Panel/1.0'})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+    for encoding in ('utf-8-sig', 'utf-8', 'cp1252', 'latin-1'):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode('utf-8', 'replace')
+
+
+_HAPPINESS_ZIP_LINK_RE = re.compile(
+    r'<a[^>]+href="(?P<url>https?://[^"]+?\.zip)"[^>]*>'
+    r'(?P<label>[^<]*?HappinessMP[^<]*?Server[^<]*?\.zip)</a>'
+    r'(?P<tail>[^<]*)',
+    re.IGNORECASE,
+)
+
+
+def parse_happiness_release_page(page: str, platform: str = None):
+    """Parse the happinessmp.net download section for the newest server zip.
+
+    The docs page lists entries like:
+      Linux: <a href=".../HappinessMP Server 2.6 Linux.zip">...</a> (Last updated: 2026-11-23)
+    There is no public API, so the page itself is the source of truth.
+    """
+    platform = (platform or HAPPINESS_PLATFORM or 'linux').lower()
+    entries = []
+    for match in _HAPPINESS_ZIP_LINK_RE.finditer(page or ''):
+        url = html_lib.unescape(match.group('url') or '').strip()
+        label = html_lib.unescape(match.group('label') or '').strip()
+        tail = match.group('tail') or ''
+        haystack = f'{url} {label}'.lower()
+        if platform not in haystack:
+            continue
+        version = _guess_version_from_url(label) or _guess_version_from_url(url)
+        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', tail)
+        entries.append({
+            'platform': platform,
+            'zip_url': url,
+            'label': label,
+            'version': version,
+            'updated': date_match.group(1) if date_match else '',
+        })
+    if not entries:
+        return None
+    entries.sort(key=lambda e: (_normalize_version(e.get('version')), e.get('updated') or ''), reverse=True)
+    return entries[0]
+
+
+def _resolve_happiness_release(update_cfg: dict = None):
+    """Return the latest HappinessMP release from the docs page.
+
+    Falls back to the legacy ``happiness_update.json`` feed when the docs page
+    cannot be parsed (e.g. the site changes its markup).
+    """
+    update_cfg = update_cfg or _load_update_config()
+    errors = []
+
+    try:
+        page = _fetch_text(HAPPINESS_DOCS_URL)
+        release = parse_happiness_release_page(page, HAPPINESS_PLATFORM)
+        if release and release.get('zip_url'):
+            return release
+        errors.append('no matching download link on docs page')
+    except Exception as e:
+        errors.append(f'docs page: {e}')
+
+    fallback_url = (update_cfg.get('happiness_update_url') or '').strip()
+    if fallback_url:
+        try:
+            data = _fetch_json(fallback_url)
+            zip_url = str(data.get('zip_url') or '').strip()
+            if zip_url:
+                return {
+                    'platform': HAPPINESS_PLATFORM,
+                    'zip_url': zip_url,
+                    'label': zip_url.rsplit('/', 1)[-1],
+                    'version': str(data.get('version') or '').strip() or _guess_version_from_url(zip_url),
+                    'updated': str(data.get('updated') or data.get('release_date') or '').strip(),
+                }
+            errors.append('fallback feed has no zip_url')
+        except Exception as e:
+            errors.append(f'fallback feed: {e}')
+
+    if errors:
+        add_console_line(f'[UPDATE] HappinessMP release lookup failed: {"; ".join(errors)}')
+    return None
 
 
 def check_for_updates(force: bool = False):
@@ -2981,16 +3106,41 @@ def check_for_updates(force: bool = False):
 
     happiness_latest = ''
     happiness_zip = ''
+    happiness_updated = ''
     happiness_available = False
-    happiness_url = (update_cfg.get('happiness_update_url') or '').strip()
-    if happiness_url:
-        try:
-            data = _fetch_json(happiness_url)
-            happiness_latest = str(data.get('version') or '').strip()
-            happiness_zip = str(data.get('zip_url') or '').strip()
-            happiness_available = _is_newer_version(happiness_latest, happiness_local.get('version'))
-        except Exception as e:
-            errors.append(f'HappinessMP update check failed: {e}')
+    release = _resolve_happiness_release(update_cfg)
+    if release:
+        happiness_zip = release.get('zip_url') or ''
+        happiness_latest = release.get('version') or _guess_version_from_url(happiness_zip)
+        happiness_updated = release.get('updated') or ''
+        local_version = happiness_local.get('version') or ''
+        local_date = happiness_local.get('release_date') or ''
+        local_zip = (happiness_local.get('zip_url') or '').strip()
+        if (
+            happiness_zip
+            and local_zip == happiness_zip
+            and not _is_unknown_version_value(local_version)
+            and local_version != happiness_latest
+        ):
+            # Same archive as the vendor's latest: heal a stale/misparsed version
+            # (e.g. "202.6" from a percent-encoded URL) without flagging an update.
+            _persist_local_happiness_info(version=happiness_latest, release_date=happiness_updated)
+            local_version = happiness_latest
+            happiness_local['version'] = local_version
+            if happiness_updated:
+                local_date = happiness_updated
+                happiness_local['release_date'] = local_date
+        if _is_newer_version(happiness_latest, local_version):
+            happiness_available = bool(happiness_zip)
+        elif happiness_updated and local_date and happiness_updated > local_date:
+            # Same version number but the vendor re-released the build.
+            happiness_available = bool(happiness_zip)
+        elif happiness_updated and not local_date and not _is_unknown_version_value(local_version):
+            # Adopt the vendor date as a baseline so future re-releases are detected.
+            _persist_local_happiness_info(release_date=happiness_updated)
+            happiness_local['release_date'] = happiness_updated
+    else:
+        errors.append('HappinessMP update check failed: no release information available')
 
     with update_lock:
         update_state['panel'] = {
@@ -3004,7 +3154,8 @@ def check_for_updates(force: bool = False):
             'current': happiness_local.get('version') or '',
             'latest': happiness_latest,
             'available': bool(happiness_available and happiness_zip),
-            'zip_url': happiness_zip
+            'zip_url': happiness_zip,
+            'updated': happiness_updated
         }
         update_state['last_check'] = datetime.now().isoformat()
         update_state['error'] = '; '.join(errors)
@@ -5161,7 +5312,8 @@ def api_update_start():
         },
         'happiness': {
             'version': payload.get('happiness', {}).get('latest'),
-            'zip_url': payload.get('happiness', {}).get('zip_url')
+            'zip_url': payload.get('happiness', {}).get('zip_url'),
+            'release_date': payload.get('happiness', {}).get('updated')
         },
         'panel_port': PANEL_PORT,
         'server_manager_pid': os.getpid(),
