@@ -142,8 +142,19 @@ export function DashboardPage() {
   }
 
   async function handleUpdateNow() {
-    const res = await apiFetch('/api/update', { method: 'POST' });
+    const stopServer = status.running;
+    if (
+      stopServer &&
+      !window.confirm('Server is running. It will be stopped before the update. Continue?')
+    ) {
+      return;
+    }
+    const res = await apiFetch('/api/update-start', {
+      method: 'POST',
+      body: JSON.stringify({ stop_server: stopServer }),
+    });
     notify(res.message || 'Update started');
+    if (res.success) refreshStatus();
   }
 
   async function handleSendCommand(command: string) {
