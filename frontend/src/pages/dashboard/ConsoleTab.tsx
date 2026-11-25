@@ -97,9 +97,11 @@ export function ConsoleTab({ lines, canSend, t, onClear, onSendCommand, onNotify
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#141416] border border-white/10">
             <span className="text-[11px] text-zinc-400">Auto-scroll</span>
             <Switch isSelected={autoScroll} onChange={setAutoScroll}>
-              <Switch.Control className="scale-90">
-                <Switch.Thumb />
-              </Switch.Control>
+              <Switch.Content>
+                <Switch.Control className="scale-90">
+                  <Switch.Thumb />
+                </Switch.Control>
+              </Switch.Content>
             </Switch>
           </div>
 

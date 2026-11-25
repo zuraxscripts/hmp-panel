@@ -174,9 +174,11 @@ export function AdminTab({ t, onNotify }: AdminTabProps) {
                       </div>
 
                       <Switch isSelected={isActive} onChange={() => toggleUser(u.username)}>
-                        <Switch.Control>
-                          <Switch.Thumb />
-                        </Switch.Control>
+                        <Switch.Content>
+                          <Switch.Control>
+                            <Switch.Thumb />
+                          </Switch.Control>
+                        </Switch.Content>
                       </Switch>
                     </div>
 

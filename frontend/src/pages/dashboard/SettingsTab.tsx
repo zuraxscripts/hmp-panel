@@ -6,7 +6,9 @@ import {
   Chip,
   Input,
   Label,
+  ListBox,
   Modal,
+  Select,
   Spinner,
   Switch,
   TextArea,
@@ -23,10 +25,13 @@ import {
   Sliders,
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
+import { RestartPrompt } from './RestartPrompt';
 
 interface SettingsTabProps {
   t: (k: string, f?: string) => string;
   onNotify: (msg: string) => void;
+  serverRunning?: boolean;
+  onRestart?: () => void | Promise<void>;
 }
 
 interface HmpSettings {
@@ -69,10 +74,74 @@ const DEFAULT_HMP_SETTINGS: HmpSettings = {
 
 type SectionId = 'server_basic' | 'server_network' | 'server_advanced' | 'panel' | 'discord';
 
-export function SettingsTab({ t, onNotify }: SettingsTabProps) {
+interface SelectOption {
+  id: string;
+  label: string;
+}
+
+const LOG_LEVEL_OPTIONS: SelectOption[] = [
+  { id: '0', label: '0 — Trace' },
+  { id: '1', label: '1 — Debug' },
+  { id: '2', label: '2 — Info (Recommended)' },
+  { id: '3', label: '3 — Warn' },
+  { id: '4', label: '4 — Error' },
+  { id: '5', label: '5 — Critical' },
+  { id: '6', label: '6 — Off' },
+];
+
+const LOCALE_OPTIONS: SelectOption[] = [
+  { id: 'en', label: 'English (en)' },
+  { id: 'cs', label: 'Čeština (cs)' },
+];
+
+function SettingsSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: SelectOption[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Select
+      className="w-full"
+      selectedKey={value}
+      onSelectionChange={(key) => {
+        if (key != null) onChange(String(key));
+      }}
+    >
+      <Label className="text-xs font-semibold text-zinc-200 h-5 flex items-center">{label}</Label>
+      <Select.Trigger className="w-full h-10 bg-[#141416] border border-white/15 text-white rounded-xl px-3">
+        <Select.Value className="text-sm" />
+        <Select.Indicator className="w-4 h-4 text-zinc-400" />
+      </Select.Trigger>
+      <Select.Popover className="bg-[#141416] border border-white/15 rounded-xl">
+        <ListBox className="p-1 outline-none">
+          {options.map((opt) => (
+            <ListBox.Item
+              key={opt.id}
+              id={opt.id}
+              textValue={opt.label}
+              className="text-xs text-zinc-200 rounded-lg px-3 py-2 outline-none cursor-pointer data-[hovered]:bg-white/10 data-[focused]:bg-white/10 data-[selected]:bg-white data-[selected]:text-black"
+            >
+              {opt.label}
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+    </Select>
+  );
+}
+
+export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: SettingsTabProps) {
   const [section, setSection] = useState<SectionId>('server_basic');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [restartPrompt, setRestartPrompt] = useState(false);
 
   const [hmp, setHmp] = useState<HmpSettings>(DEFAULT_HMP_SETTINGS);
   const [hmpMissing, setHmpMissing] = useState(false);
@@ -193,6 +262,9 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
           secret: '',
           secret_set: prev.secret_set || Boolean(payload.secret),
         }));
+        if (serverRunning && onRestart) {
+          setRestartPrompt(true);
+        }
       } else {
         onNotify(res.message || 'Failed to save server settings');
       }
@@ -448,9 +520,11 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                     isSelected={hmp.listed}
                     onChange={(checked) => setHmp((p) => ({ ...p, listed: checked }))}
                   >
-                    <Switch.Control>
-                      <Switch.Thumb />
-                    </Switch.Control>
+                    <Switch.Content>
+                      <Switch.Control>
+                        <Switch.Thumb />
+                      </Switch.Control>
+                    </Switch.Content>
                   </Switch>
                 </div>
 
@@ -593,37 +667,27 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
               </Card.Header>
 
               <Card.Content className="p-5 flex flex-col gap-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs font-semibold text-zinc-200 mb-1 block">
-                      Log Level (loglevel)
-                    </Label>
-                    <select
-                      value={hmp.loglevel}
-                      onChange={(e) => setHmp((p) => ({ ...p, loglevel: e.target.value }))}
-                      className="w-full h-10 bg-[#141416] border border-white/15 text-white text-xs rounded-xl px-3 outline-none"
-                    >
-                      <option value="0">0 — Trace</option>
-                      <option value="1">1 — Debug</option>
-                      <option value="2">2 — Info (Recommended)</option>
-                      <option value="3">3 — Warn</option>
-                      <option value="4">4 — Error</option>
-                      <option value="5">5 — Critical</option>
-                      <option value="6">6 — Off</option>
-                    </select>
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+                  <SettingsSelect
+                    label="Log Level (loglevel)"
+                    value={hmp.loglevel}
+                    options={LOG_LEVEL_OPTIONS}
+                    onChange={(v) => setHmp((p) => ({ ...p, loglevel: v }))}
+                  />
 
                   <TextField value={hmp.statstoken} onChange={(v) => setHmp((p) => ({ ...p, statstoken: v }))}>
-                    <Label className="text-xs font-semibold text-zinc-200 mb-1">Stats Token (statstoken)</Label>
+                    <Label className="text-xs font-semibold text-zinc-200 h-5 flex items-center">
+                      Stats Token (statstoken)
+                    </Label>
                     <Input
                       type="password"
                       placeholder="Empty = disabled"
-                      className="bg-[#141416] border border-white/15 text-white rounded-xl"
+                      className="h-10 bg-[#141416] border border-white/15 text-white rounded-xl"
                     />
                   </TextField>
 
                   <TextField value={hmp.secret} onChange={(v) => setHmp((p) => ({ ...p, secret: v }))}>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between h-5">
                       <Label className="text-xs font-semibold text-zinc-200">Resource Secret</Label>
                       <Chip size="sm" className="bg-white/10 text-zinc-300 text-[10px] h-5">
                         {hmp.secret_set ? 'Set' : 'Not set'}
@@ -632,7 +696,7 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                     <Input
                       type="password"
                       placeholder="New secret..."
-                      className="bg-[#141416] border border-white/15 text-white rounded-xl"
+                      className="h-10 bg-[#141416] border border-white/15 text-white rounded-xl"
                     />
                   </TextField>
                 </div>
@@ -646,7 +710,9 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                       </div>
                     </div>
                     <Switch isSelected={hmp.chat} onChange={(c) => setHmp((p) => ({ ...p, chat: c }))}>
-                      <Switch.Control><Switch.Thumb /></Switch.Control>
+                      <Switch.Content>
+                        <Switch.Control><Switch.Thumb /></Switch.Control>
+                      </Switch.Content>
                     </Switch>
                   </div>
 
@@ -658,7 +724,9 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                       </div>
                     </div>
                     <Switch isSelected={hmp.gameevents} onChange={(c) => setHmp((p) => ({ ...p, gameevents: c }))}>
-                      <Switch.Control><Switch.Thumb /></Switch.Control>
+                      <Switch.Content>
+                        <Switch.Control><Switch.Thumb /></Switch.Control>
+                      </Switch.Content>
                     </Switch>
                   </div>
 
@@ -670,7 +738,9 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                       </div>
                     </div>
                     <Switch isSelected={hmp.developer} onChange={(c) => setHmp((p) => ({ ...p, developer: c }))}>
-                      <Switch.Control><Switch.Thumb /></Switch.Control>
+                      <Switch.Content>
+                        <Switch.Control><Switch.Thumb /></Switch.Control>
+                      </Switch.Content>
                     </Switch>
                   </div>
                 </div>
@@ -701,32 +771,27 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
 
               <Card.Content className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <TextField value={panelName} onChange={setPanelName}>
-                  <Label className="text-xs font-semibold text-zinc-200 mb-1">Panel Name</Label>
-                  <Input className="bg-[#141416] border border-white/15 text-white rounded-xl" />
+                  <Label className="text-xs font-semibold text-zinc-200 h-5 flex items-center">Panel Name</Label>
+                  <Input className="h-10 bg-[#141416] border border-white/15 text-white rounded-xl" />
                 </TextField>
 
-                <div>
-                  <Label className="text-xs font-semibold text-zinc-200 mb-1 block">Language</Label>
-                  <select
-                    value={locale}
-                    onChange={(e) => setLocale(e.target.value)}
-                    className="w-full h-10 bg-[#141416] border border-white/15 text-white text-xs rounded-xl px-3 outline-none"
-                  >
-                    <option value="en">English (en)</option>
-                    <option value="cs">Čeština (cs)</option>
-                  </select>
-                </div>
+                <SettingsSelect
+                  label="Language"
+                  value={locale}
+                  options={LOCALE_OPTIONS}
+                  onChange={setLocale}
+                />
 
                 <TextField value={scheduledRestarts} onChange={setScheduledRestarts}>
-                  <Label className="text-xs font-semibold text-zinc-200 mb-1">Scheduled Restarts</Label>
+                  <Label className="text-xs font-semibold text-zinc-200 h-5 flex items-center">Scheduled Restarts</Label>
                   <Input
                     placeholder="04:00, 16:00"
-                    className="bg-[#141416] border border-white/15 text-white font-mono rounded-xl"
+                    className="h-10 bg-[#141416] border border-white/15 text-white font-mono rounded-xl"
                   />
                 </TextField>
 
                 <TextField value={panelSecret} onChange={setPanelSecret}>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between h-5">
                     <Label className="text-xs font-semibold text-zinc-200">Panel Secret</Label>
                     <Chip size="sm" className="bg-white/10 text-zinc-300 text-[10px] h-5">
                       {panelSecretSet ? 'Set' : 'Not set'}
@@ -735,7 +800,7 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                   <Input
                     type="password"
                     placeholder="Enter new secret..."
-                    className="bg-[#141416] border border-white/15 text-white rounded-xl"
+                    className="h-10 bg-[#141416] border border-white/15 text-white rounded-xl"
                   />
                 </TextField>
 
@@ -747,7 +812,9 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                     </div>
                   </div>
                   <Switch isSelected={autoStart} onChange={setAutoStart}>
-                    <Switch.Control><Switch.Thumb /></Switch.Control>
+                    <Switch.Content>
+                      <Switch.Control><Switch.Thumb /></Switch.Control>
+                    </Switch.Content>
                   </Switch>
                 </div>
               </Card.Content>
@@ -793,7 +860,9 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
                     </div>
                   </div>
                   <Switch isSelected={discordEnabled} onChange={setDiscordEnabled}>
-                    <Switch.Control><Switch.Thumb /></Switch.Control>
+                    <Switch.Content>
+                      <Switch.Control><Switch.Thumb /></Switch.Control>
+                    </Switch.Content>
                   </Switch>
                 </div>
 
@@ -889,6 +958,13 @@ export function SettingsTab({ t, onNotify }: SettingsTabProps) {
           </Modal.Container>
         </Modal.Backdrop>
       </Modal>
+
+      <RestartPrompt
+        open={restartPrompt}
+        onClose={() => setRestartPrompt(false)}
+        onRestart={onRestart ?? (() => {})}
+        t={t}
+      />
     </>
   );
 }

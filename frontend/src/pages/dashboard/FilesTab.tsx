@@ -28,10 +28,13 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { FileEntry } from './types';
+import { RestartPrompt } from './RestartPrompt';
 
 interface FilesTabProps {
   t: (k: string, f?: string) => string;
   onNotify: (msg: string) => void;
+  serverRunning?: boolean;
+  onRestart?: () => void | Promise<void>;
 }
 
 function formatBytes(bytes: number) {
@@ -42,11 +45,12 @@ function formatBytes(bytes: number) {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-export function FilesTab({ t, onNotify }: FilesTabProps) {
+export function FilesTab({ t, onNotify, serverRunning = false, onRestart }: FilesTabProps) {
   const [currentPath, setCurrentPath] = useState('');
   const [items, setItems] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [restartPrompt, setRestartPrompt] = useState(false);
 
   const [editModal, setEditModal] = useState<{ path: string; name: string; content: string } | null>(null);
   const [savingFile, setSavingFile] = useState(false);
@@ -60,8 +64,17 @@ export function FilesTab({ t, onNotify }: FilesTabProps) {
     try {
       const data = await apiFetch(`/api/files?path=${encodeURIComponent(path)}`);
       if (Array.isArray(data.files)) {
-        setItems(data.files);
-        setCurrentPath(data.current_path ?? path);
+        const basePath: string = data.current_path ?? data.path ?? path;
+        const files = data.files.map((f: any) => ({
+          ...f,
+          path: f.path || (basePath ? `${basePath}/${f.name}` : f.name),
+          modified:
+            typeof f.modified === 'number'
+              ? new Date(f.modified * 1000).toLocaleString()
+              : f.modified,
+        })) as FileEntry[];
+        setItems(files);
+        setCurrentPath(basePath);
         setSelected(new Set());
       } else if (data.error) {
         onNotify(data.error);
@@ -76,13 +89,14 @@ export function FilesTab({ t, onNotify }: FilesTabProps) {
   }, []);
 
   async function openFile(item: FileEntry) {
+    const itemPath = item.path || (currentPath ? `${currentPath}/${item.name}` : item.name);
     if (item.is_dir) {
-      loadFiles(item.path);
+      loadFiles(itemPath);
       return;
     }
-    const data = await apiFetch(`/api/files/read?path=${encodeURIComponent(item.path)}`);
+    const data = await apiFetch(`/api/files/read?path=${encodeURIComponent(itemPath)}`);
     if (data.success !== false && typeof data.content === 'string') {
-      setEditModal({ path: item.path, name: item.name, content: data.content });
+      setEditModal({ path: itemPath, name: item.name, content: data.content });
     } else {
       onNotify(data.error || data.message || 'Cannot open file');
     }
@@ -97,9 +111,13 @@ export function FilesTab({ t, onNotify }: FilesTabProps) {
         body: JSON.stringify({ path: editModal.path, content: editModal.content }),
       });
       if (data.success) {
+        const savedName = (editModal.path || '').replace(/\\/g, '/').split('/').pop();
         onNotify('File saved');
         setEditModal(null);
         loadFiles();
+        if (serverRunning && onRestart && savedName === 'settings.xml') {
+          setRestartPrompt(true);
+        }
       } else {
         onNotify(data.error || data.message || 'Failed to save file');
       }
@@ -616,6 +634,13 @@ export function FilesTab({ t, onNotify }: FilesTabProps) {
           </Modal.Container>
         </Modal.Backdrop>
       </Modal>
+
+      <RestartPrompt
+        open={restartPrompt}
+        onClose={() => setRestartPrompt(false)}
+        onRestart={onRestart ?? (() => {})}
+        t={t}
+      />
     </>
   );
 }

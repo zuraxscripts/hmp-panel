@@ -178,6 +178,7 @@ export function DashboardPage() {
 
   const perms = user?.permissions || {};
   const isAdmin = user?.role === 'admin';
+  const canControlServer = isAdmin || perms.can_control_server !== false;
 
   const navGroups: {
     group: string;
@@ -371,7 +372,7 @@ export function DashboardPage() {
               playerCount={players.length}
               consoleLines={consoleLines}
               updateInfo={updateInfo}
-              canControl={isAdmin || perms.can_control_server !== false}
+              canControl={canControlServer}
               canSend={isAdmin || perms.can_send_commands !== false}
               t={t}
               onAction={handleServerAction}
@@ -394,13 +395,27 @@ export function DashboardPage() {
             />
           )}
 
-          {activePage === 'files' && <FilesTab t={t} onNotify={notify} />}
+          {activePage === 'files' && (
+            <FilesTab
+              t={t}
+              onNotify={notify}
+              serverRunning={status.running}
+              onRestart={canControlServer ? () => handleServerAction('restart') : undefined}
+            />
+          )}
 
           {activePage === 'resources' && <ResourcesTab kind="resources" t={t} onNotify={notify} />}
 
           {activePage === 'addons' && <ResourcesTab kind="addons" t={t} onNotify={notify} />}
 
-          {activePage === 'settings' && <SettingsTab t={t} onNotify={notify} />}
+          {activePage === 'settings' && (
+            <SettingsTab
+              t={t}
+              onNotify={notify}
+              serverRunning={status.running}
+              onRestart={canControlServer ? () => handleServerAction('restart') : undefined}
+            />
+          )}
 
           {activePage === 'logs' && <LogsTab t={t} onNotify={notify} />}
 

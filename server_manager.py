@@ -3894,18 +3894,22 @@ def api_files():
             try:
                 st = os.stat(full)
                 is_dir = os.path.isdir(full)
+                rel_path = f'{req_path.rstrip("/")}/{name}' if req_path else name
+                rel_path = rel_path.replace('\\', '/')
                 entries.append({
                     'name': name,
+                    'path': rel_path,
                     'is_dir': is_dir,
                     'size': 0 if is_dir else int(st.st_size),
-                    'modified': int(st.st_mtime),
+                    'modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(st.st_mtime)),
+                    'modified_ts': int(st.st_mtime),
                 })
             except FileNotFoundError:
                 continue
     except PermissionError:
         return jsonify({'error': 'Permission denied reading directory', 'files': []})
 
-    return jsonify({'path': req_path, 'files': entries})
+    return jsonify({'path': req_path, 'current_path': req_path, 'files': entries})
 
 
 @app.route('/api/files/read')
