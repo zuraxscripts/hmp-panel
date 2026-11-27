@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Chip, Input, SearchField, Switch, TextField } from '@heroui/react';
 import { ArrowDown, Copy, Send, Terminal, Trash2 } from 'lucide-react';
+import { cleanConsoleLine } from '../../lib/api';
 
 interface ConsoleTabProps {
   lines: string[];
@@ -22,9 +23,10 @@ export function ConsoleTab({ lines, canSend, t, onClear, onSendCommand, onNotify
   const [histIdx, setHistIdx] = useState(-1);
   const boxRef = useRef<HTMLDivElement>(null);
 
+  const cleanedLines = lines.map(cleanConsoleLine);
   const visibleLines = filter.trim()
-    ? lines.filter((l) => l.toLowerCase().includes(filter.trim().toLowerCase()))
-    : lines;
+    ? cleanedLines.filter((l) => l.toLowerCase().includes(filter.trim().toLowerCase()))
+    : cleanedLines;
 
   useEffect(() => {
     if (autoScroll && boxRef.current) {

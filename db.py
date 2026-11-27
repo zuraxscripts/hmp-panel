@@ -12,6 +12,7 @@ except Exception:
 DATA_DIR = Path('./data')
 DB_CONFIG_FILE = DATA_DIR / 'db.json'
 DB_KEY_FILE = DATA_DIR / 'db.key'
+STORAGE_MODE_FILE = DATA_DIR / 'storage_mode.json'
 
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -34,10 +35,37 @@ def _env_config():
     }
 
 
+def _read_storage_mode():
+    try:
+        if STORAGE_MODE_FILE.exists():
+            data = json.loads(STORAGE_MODE_FILE.read_text(encoding='utf-8'))
+            mode = str(data.get('mode') or '').strip().lower()
+            if mode in ('local', 'mysql'):
+                return mode
+    except Exception:
+        pass
+    return ''
+
+
+def storage_mode():
+    """Return the configured storage backend: ``mysql`` or ``local``."""
+    if _read_storage_mode() == 'local':
+        return 'local'
+    if _env_config() or DB_CONFIG_FILE.exists():
+        return 'mysql'
+    return 'local'
+
+
+def set_storage_mode(mode):
+    """Persist the storage backend choice so it survives restarts."""
+    normalized = 'local' if str(mode or '').strip().lower() == 'local' else 'mysql'
+    DATA_DIR.mkdir(exist_ok=True)
+    STORAGE_MODE_FILE.write_text(json.dumps({'mode': normalized}, indent=4), encoding='utf-8')
+    return normalized
+
+
 def is_configured():
-    if _env_config():
-        return True
-    return DB_CONFIG_FILE.exists()
+    return storage_mode() == 'mysql'
 
 
 def _get_fernet():
@@ -90,6 +118,7 @@ def save_db_config(cfg: dict):
         os.chmod(DB_CONFIG_FILE, 0o600)
     except Exception:
         pass
+    set_storage_mode('mysql')
 
 
 def load_db_config():

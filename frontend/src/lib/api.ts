@@ -50,3 +50,9 @@ export async function loadLocale(lang = 'en'): Promise<LocaleMap> {
 export function createTranslator(locale: LocaleMap) {
   return (key: string, fallback?: string) => locale[key] || fallback || key;
 }
+
+const ANSI_PATTERN = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\].*?(?:\x1B\\|\x07))|\[(?:\d+(?:;\d+)*)?m/g;
+
+export function cleanConsoleLine(line: string): string {
+  return String(line ?? '').replace(ANSI_PATTERN, '');
+}

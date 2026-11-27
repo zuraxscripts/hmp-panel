@@ -15,6 +15,13 @@ export interface ServerStatus {
   cpu: number;
   memory: number;
   attached: boolean;
+  sys_cpu?: number;
+  sys_mem_used_mb?: number;
+  sys_mem_total_mb?: number;
+  sys_mem_pct?: number;
+  disk_used_gb?: number;
+  disk_total_gb?: number;
+  disk_pct?: number;
 }
 
 export interface FileEntry {
@@ -23,6 +30,7 @@ export interface FileEntry {
   is_dir: boolean;
   size: number;
   modified: string;
+  modified_ts?: number;
 }
 
 export interface PlayerEntry {

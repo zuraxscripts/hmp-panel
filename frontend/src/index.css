@@ -67,6 +67,7 @@
   body,
   #root {
     min-height: 100%;
+    min-height: 100dvh;
     background-color: #000000;
     color: #ffffff;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -187,4 +188,197 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.30);
+}
+
+/* Smooth Animations & Micro-interactions */
+@keyframes hmpFadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-panel-in {
+  animation: hmpFadeSlideIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-panel-in > .card,
+.animate-panel-in > div > .card {
+  animation: hmpFadeSlideIn 0.36s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-panel-in > .card:nth-child(2),
+.animate-panel-in > div > .card:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.animate-panel-in > .card:nth-child(3),
+.animate-panel-in > div > .card:nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.animate-panel-in > .card:nth-child(4),
+.animate-panel-in > div > .card:nth-child(4) {
+  animation-delay: 105ms;
+}
+
+.button {
+  transition: transform 0.14s ease, background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease !important;
+}
+.button:active:not(:disabled):not([data-disabled="true"]) {
+  transform: scale(0.97);
+}
+
+.card {
+  transition: border-color 0.24s ease, box-shadow 0.24s ease, background-color 0.24s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+}
+
+.progress-bar__fill {
+  transition: width 0.45s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease !important;
+}
+
+.tabs__indicator {
+  transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+:where(button, a, input, textarea, select, [role="button"]):focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 3px;
+}
+
+.mobile-quick-nav button {
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+@media (pointer: coarse) and (max-width: 767px) {
+  .button {
+    min-height: 40px;
+  }
+
+  .button--icon-only {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+.button,
+.card,
+.tabs__indicator {
+  will-change: auto;
+}
+
+@media (max-width: 360px) {
+  .mobile-quick-nav {
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+  }
+
+  .mobile-quick-nav button {
+    font-size: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+.file-editor-modal-body,
+.file-editor-shell,
+.file-editor-main,
+.file-editor-shell .cm-theme,
+.file-editor-shell .cm-editor {
+  min-height: 0;
+}
+
+.file-editor-shell .cm-editor {
+  height: 100%;
+  font-family: 'Cascadia Code', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.file-editor-shell .cm-scroller {
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.file-editor-shell .cm-gutters {
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.file-editor-shell .cm-activeLineGutter {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.file-editor-shell .cm-search {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0b0b0b;
+  color: #e4e4e7;
+}
+
+.file-editor-shell .cm-search input,
+.file-editor-shell .cm-search button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: #141414;
+  color: #e4e4e7;
+}
+
+.file-editor-shell .cm-search input {
+  padding: 4px 7px;
+}
+
+.file-editor-shell .cm-search button {
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.file-editor-shell .cm-search button:hover {
+  background: #222;
+}
+
+.file-editor-shell .cm-searchMatch {
+  background: rgba(250, 204, 21, 0.2);
+  outline: 1px solid rgba(250, 204, 21, 0.4);
+}
+
+.file-editor-shell .cm-searchMatch-selected {
+  background: rgba(250, 204, 21, 0.38);
+}
+
+@media (max-width: 640px) {
+  .file-editor-shell .cm-editor {
+    font-size: 13px;
+  }
+
+  .file-editor-shell .cm-gutters {
+    min-width: 38px;
+  }
 }

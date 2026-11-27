@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { RestartPrompt } from './RestartPrompt';
+import { DiscordEditor } from './DiscordEditor';
 
 interface SettingsTabProps {
   t: (k: string, f?: string) => string;
@@ -55,7 +56,7 @@ interface HmpSettings {
 }
 
 const DEFAULT_HMP_SETTINGS: HmpSettings = {
-  hostaddress: '0.0.0.0',
+  hostaddress: '127.0.0.1',
   hostname: 'HappinessMP Server',
   listed: true,
   listingkey: '',
@@ -114,9 +115,9 @@ function SettingsSelect({
       }}
     >
       <Label className="text-xs font-semibold text-zinc-200 h-5 flex items-center">{label}</Label>
-      <Select.Trigger className="w-full h-10 bg-[#141416] border border-white/15 text-white rounded-xl px-3">
-        <Select.Value className="text-sm" />
-        <Select.Indicator className="w-4 h-4 text-zinc-400" />
+      <Select.Trigger className="w-full h-10 bg-[#141416] border border-white/15 text-white rounded-xl px-3 flex items-center justify-between gap-2">
+        <Select.Value className="text-xs sm:text-sm truncate whitespace-nowrap min-w-0" />
+        <Select.Indicator className="w-4 h-4 text-zinc-400 shrink-0" />
       </Select.Trigger>
       <Select.Popover className="bg-[#141416] border border-white/15 rounded-xl">
         <ListBox className="p-1 outline-none">
@@ -241,7 +242,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
         maxplayers: Math.min(100, Math.max(1, Number(hmp.maxplayers) || 32)),
         episode: Number(hmp.episode) || 0,
         statstoken: hmp.statstoken.trim(),
-        loglevel: Number(hmp.loglevel) || 2,
+        loglevel: Number.isFinite(Number(hmp.loglevel)) ? Number(hmp.loglevel) : 2,
         chat: hmp.chat,
         gameevents: hmp.gameevents,
         developer: hmp.developer,
@@ -378,8 +379,8 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left Navigation (Mobile horizontal pills, Desktop vertical list) */}
-        <div className="lg:col-span-3 flex lg:flex-col gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+        {/* Left Navigation (Mobile responsive grid navbar, Desktop vertical list — no horizontal scrollbar) */}
+        <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-col gap-1.5">
           {navList.map((item) => {
             const active = section === item.id;
             return (
@@ -387,16 +388,16 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                 key={item.id}
                 type="button"
                 onClick={() => setSection(item.id)}
-                className={`shrink-0 lg:w-full p-3 rounded-xl border text-left transition-colors cursor-pointer flex items-center gap-3 ${
+                className={`w-full p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer flex items-center gap-2.5 min-w-0 ${
                   active
                     ? 'bg-white text-black border-white'
                     : 'bg-[#0e0e10] text-zinc-300 border-white/10 hover:border-white/25 hover:text-white'
                 }`}
               >
                 <div className="shrink-0">{item.icon}</div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold whitespace-nowrap">{item.label}</div>
-                  <div className={`text-[10px] hidden lg:block ${active ? 'text-zinc-700' : 'text-zinc-500'}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold truncate">{item.label}</div>
+                  <div className={`text-[10px] hidden lg:block truncate ${active ? 'text-zinc-700' : 'text-zinc-500'}`}>
                     {item.desc}
                   </div>
                 </div>
@@ -406,7 +407,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
         </div>
 
         {/* Right Content Pane */}
-        <div className="lg:col-span-9 flex flex-col gap-4">
+        <div key={section} className="lg:col-span-9 flex flex-col gap-4 animate-panel-in">
           {isServerSection && hmpMissing && (
             <Alert className="bg-white/5 border border-white/20 rounded-2xl text-white">
               <Alert.Content>
@@ -539,7 +540,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                     className="bg-[#141416] border border-white/15 text-white rounded-xl"
                   />
                   <span className="text-[11px] text-zinc-500 mt-1 block">
-                    Grants verified checkmark, description, game modes &amp; languages.
+                    Grants a verified checkmark, description, game modes and languages. A listing key will be required for public listing from 1 January 2027.
                   </span>
                 </TextField>
               </Card.Content>
@@ -560,7 +561,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                     size="sm"
                     variant="secondary"
                     onPress={() =>
-                      setHmp((p) => ({ ...p, hostaddress: '0.0.0.0', port: '9999', relayport: '9998' }))
+                      setHmp((p) => ({ ...p, hostaddress: '127.0.0.1', port: '9999', relayport: '9998' }))
                     }
                     className="rounded-xl"
                   >
@@ -588,7 +589,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                   >
                     <Label className="text-xs font-semibold text-zinc-200 mb-1">Bind Address (hostaddress)</Label>
                     <Input
-                      placeholder="0.0.0.0"
+                      placeholder="127.0.0.1"
                       className="bg-[#141416] border border-white/15 text-white font-mono rounded-xl"
                     />
                   </TextField>
@@ -831,11 +832,18 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                       size="sm"
                       className={
                         discordRuntime.connected
-                          ? 'bg-white text-black font-semibold text-[11px]'
-                          : 'bg-white/10 text-zinc-400 text-[11px]'
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold text-[11px] px-2.5'
+                          : 'bg-rose-500/15 text-rose-400 border border-rose-500/30 font-semibold text-[11px] px-2.5'
                       }
                     >
-                      {discordRuntime.connected ? 'Connected' : 'Offline'}
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            discordRuntime.connected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                          }`}
+                        />
+                        {discordRuntime.connected ? 'Connected' : 'Offline'}
+                      </span>
                     </Chip>
                   )}
                 </div>
@@ -892,26 +900,12 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                   </TextField>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-xs font-semibold text-zinc-200 mb-1.5 block">Status Embed JSON</Label>
-                    <TextArea
-                      value={discordEmbedJson}
-                      onChange={(e) => setDiscordEmbedJson(e.target.value)}
-                      rows={5}
-                      className="w-full bg-[#050506] border border-white/15 text-zinc-200 font-mono text-xs rounded-xl p-3"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold text-zinc-200 mb-1.5 block">Status Config JSON</Label>
-                    <TextArea
-                      value={discordConfigJson}
-                      onChange={(e) => setDiscordConfigJson(e.target.value)}
-                      rows={5}
-                      className="w-full bg-[#050506] border border-white/15 text-zinc-200 font-mono text-xs rounded-xl p-3"
-                    />
-                  </div>
-                </div>
+                <DiscordEditor
+                  embedJson={discordEmbedJson}
+                  configJson={discordConfigJson}
+                  onChangeEmbedJson={setDiscordEmbedJson}
+                  onChangeConfigJson={setDiscordConfigJson}
+                />
               </Card.Content>
             </Card>
           )}

@@ -40,7 +40,7 @@
 > HMP Panel targets Linux `x86_64` / `amd64` HappinessMP server deployments. For Windows, see the <a href="#windows-version">Windows Version</a> section.
 
 > [!NOTE]
-> HMP Panel requires MySQL or MariaDB for data storage.
+> HMP Panel can use MySQL/MariaDB **or** a local JSON file store (no database server required).
 
 ## What It Does
 
@@ -70,7 +70,7 @@ HMP Panel is a browser-based operations panel for a HappinessMP server. It combi
 | Server lifecycle | Start, stop, restart, auto-start, process detection, uptime, CPU/RAM samples |
 | Console | Live output, history, command input, command logging |
 | Setup | PIN-protected first run, admin account creation, HappinessMP server download, hpm-connector installation |
-| Storage | MySQL/MariaDB with encrypted credentials, optional JSON fallback files |
+| Storage | MySQL/MariaDB with encrypted credentials, or local JSON files in `./data` |
 | HappinessMP config | Visual management for `settings.xml` fields |
 | Files | Browse, read, edit, upload, download, rename, delete, zip, unzip, create folders |
 | Resources | Start, stop, restart resources and addons from the panel |
@@ -89,7 +89,7 @@ HMP Panel is a browser-based operations panel for a HappinessMP server. It combi
 | OS | Linux (Ubuntu 22.04/24.04 recommended) |
 | Architecture | `x86_64` / `amd64` |
 | Python | `3.9+` (3.11+ recommended) |
-| Database | MySQL or MariaDB server |
+| Database | Optional — MySQL/MariaDB server, or use the built-in local file store |
 | Python packages | Installed from [`requirements.txt`](./requirements.txt) |
 | Tools | `git`, `python3`, `python3-venv`, `python3-pip` |
 | Network | Needed during first setup to download the HappinessMP Linux server archive |
@@ -134,13 +134,13 @@ Setup asks for:
 
 1. Setup PIN from the terminal
 2. Admin username and password
-3. Database connection details (host, port, user, password, database)
+3. Storage backend: MySQL/MariaDB connection details **or** the **Use Local DB (file)** button (no SQL required)
 
 Setup then performs:
 
 | Step | Result |
 | --- | --- |
-| Database | Saves encrypted DB credentials and creates required tables |
+| Storage | Saves encrypted DB credentials and creates tables, or enables the local JSON store |
 | Secret | Generates the panel secret if still using the default |
 | Server files | Downloads the official HappinessMP Linux x64 archive when missing |
 | hpm-connector | Downloads and installs the latest connector release |
@@ -262,7 +262,7 @@ Important Pterodactyl notes:
 | Topic | Note |
 | --- | --- |
 | Architecture | Use Linux `amd64` / `x86_64` nodes |
-| External database | Required (MySQL/MariaDB) |
+| External database | Optional — use MySQL/MariaDB or the local file store |
 | Internet | First setup needs outbound access for HappinessMP files and hpm-connector |
 | Windows nodes | Not supported |
 

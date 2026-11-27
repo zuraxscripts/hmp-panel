@@ -1841,6 +1841,126 @@ def get_current_user():
     return username, get_user(username)
 
 
+ROLES_FILE = DATA_DIR / 'roles.json'
+
+PERMISSION_CATALOG = [
+    {'key': 'can_view_dashboard', 'label': 'View Dashboard & Telemetry', 'group': 'Server', 'desc': 'Access overview, live stats, and telemetry charts'},
+    {'key': 'can_control_server', 'label': 'Control Server Power', 'group': 'Server', 'desc': 'Start, stop, and restart the game server'},
+    {'key': 'can_update_server', 'label': 'Install Server Updates', 'group': 'Server', 'desc': 'Run server and panel updates'},
+    {'key': 'can_view_console', 'label': 'View Live Console', 'group': 'Console', 'desc': 'Read real-time server console output'},
+    {'key': 'can_send_commands', 'label': 'Send Console Commands', 'group': 'Console', 'desc': 'Execute commands directly in the server console'},
+    {'key': 'can_view_players', 'label': 'View Players & Bans', 'group': 'Players', 'desc': 'See connected players and active ban list'},
+    {'key': 'can_moderate_players', 'label': 'Moderate Players', 'group': 'Players', 'desc': 'Message, warn, kick, ban, and unban players'},
+    {'key': 'can_view_files', 'label': 'Browse & Download Files', 'group': 'Files & Resources', 'desc': 'Navigate directories and read/download server files'},
+    {'key': 'can_edit_files', 'label': 'Edit & Upload Files', 'group': 'Files & Resources', 'desc': 'Create, edit, rename, upload, and delete files'},
+    {'key': 'can_manage_resources', 'label': 'Manage Resources & Addons', 'group': 'Files & Resources', 'desc': 'Start, stop, and restart server resources and addons'},
+    {'key': 'can_view_logs', 'label': 'View Activity Logs', 'group': 'System', 'desc': 'Inspect audit and user action logs'},
+    {'key': 'can_view_settings', 'label': 'View Settings', 'group': 'System', 'desc': 'View server, panel, and Discord configuration'},
+    {'key': 'can_edit_settings', 'label': 'Edit Settings', 'group': 'System', 'desc': 'Modify server settings.xml, panel config, and Discord bot'},
+    {'key': 'can_manage_users', 'label': 'Manage Panel Users', 'group': 'Administration', 'desc': 'Create, toggle, reset passwords, and edit user access'},
+    {'key': 'can_manage_roles', 'label': 'Manage Roles & Permissions', 'group': 'Administration', 'desc': 'Create, edit, and delete custom roles and permissions'},
+]
+ALL_PERMISSION_KEYS = [p['key'] for p in PERMISSION_CATALOG]
+
+
+def _default_roles():
+    all_true = {k: True for k in ALL_PERMISSION_KEYS}
+    return {
+        'admin': {
+            'id': 'admin',
+            'label': 'Owner / Admin',
+            'description': 'Full unrestricted access to the entire panel and security.',
+            'color': '#ffffff',
+            'builtin': True,
+            'locked': True,
+            'permissions': dict(all_true),
+        },
+        'moderator': {
+            'id': 'moderator',
+            'label': 'Moderator',
+            'description': 'Manage players, console, server power, and view logs.',
+            'color': '#34d399',
+            'builtin': True,
+            'locked': False,
+            'permissions': {
+                **{k: False for k in ALL_PERMISSION_KEYS},
+                'can_view_dashboard': True,
+                'can_control_server': True,
+                'can_view_console': True,
+                'can_send_commands': True,
+                'can_view_players': True,
+                'can_moderate_players': True,
+                'can_view_files': True,
+                'can_view_logs': True,
+            },
+        },
+        'viewer': {
+            'id': 'viewer',
+            'label': 'Viewer',
+            'description': 'Read-only access to dashboard, console, players, and logs.',
+            'color': '#60a5fa',
+            'builtin': True,
+            'locked': False,
+            'permissions': {
+                **{k: False for k in ALL_PERMISSION_KEYS},
+                'can_view_dashboard': True,
+                'can_view_console': True,
+                'can_view_players': True,
+                'can_view_logs': True,
+            },
+        },
+    }
+
+
+def load_roles():
+    defaults = _default_roles()
+    try:
+        if ROLES_FILE.exists():
+            raw = json.loads(ROLES_FILE.read_text(encoding='utf-8'))
+            if isinstance(raw, dict):
+                merged = dict(defaults)
+                for rid, rdata in raw.items():
+                    if not isinstance(rdata, dict):
+                        continue
+                    if rid == 'admin':
+                        continue
+                    perms = {k: bool((rdata.get('permissions') or {}).get(k, False)) for k in ALL_PERMISSION_KEYS}
+                    merged[rid] = {
+                        'id': rid,
+                        'label': str(rdata.get('label') or rid),
+                        'description': str(rdata.get('description') or ''),
+                        'color': str(rdata.get('color') or '#a1a1aa'),
+                        'builtin': rid in defaults,
+                        'locked': False,
+                        'permissions': perms,
+                    }
+                return merged
+    except Exception:
+        pass
+    return defaults
+
+
+def save_roles(roles: dict):
+    ROLES_FILE.write_text(json.dumps(roles, indent=2, ensure_ascii=False), encoding='utf-8')
+
+
+def get_effective_permissions(user: dict) -> dict:
+    if not user:
+        return {k: False for k in ALL_PERMISSION_KEYS}
+    role_id = str(user.get('role') or 'viewer')
+    if role_id == 'admin':
+        return {k: True for k in ALL_PERMISSION_KEYS}
+    roles = load_roles()
+    role_perms = dict((roles.get(role_id) or {}).get('permissions') or {})
+    base = {k: bool(role_perms.get(k, False)) for k in ALL_PERMISSION_KEYS}
+    overrides = user.get('permissions')
+    if isinstance(overrides, dict):
+        for k, v in overrides.items():
+            if k in base and isinstance(v, bool):
+                base[k] = v
+    return base
+
+
 def require_permission(permission_key: str):
     
     def decorator(f):
@@ -1851,10 +1971,12 @@ def require_permission(permission_key: str):
             _, user = get_current_user()
             if not user:
                 return jsonify({'error': 'User not found'}), 404
+            if not user.get('enabled', True):
+                return jsonify({'error': 'Account disabled'}), 403
                                                  
             if user.get('role') == 'admin':
                 return f(*args, **kwargs)
-            perms = user.get('permissions', {})
+            perms = get_effective_permissions(user)
                                                           
             if not perms.get(permission_key, False):
                 return jsonify({'error': 'Permission denied'}), 403
@@ -1947,33 +2069,7 @@ def create_user(username, password, role='user', force_password_change=True, per
 
                          
     if permissions is None:
-        if role == 'admin':
-                                        
-            permissions = {
-                'can_view_dashboard': True,
-                'can_control_server': True,
-                'can_view_console': True,
-                'can_send_commands': True,
-                'can_view_files': True,
-                'can_edit_files': True,
-                'can_view_logs': True,
-                'can_view_players': True,
-                'can_manage_resources': True,
-                'can_view_settings': True
-            }
-        else:
-            permissions = {
-                'can_view_dashboard': True,
-                'can_control_server': True,
-                'can_view_console': True,
-                'can_send_commands': True,
-                'can_view_files': True,
-                'can_edit_files': False,
-                'can_view_logs': True,
-                'can_view_players': True,
-                'can_manage_resources': False,
-                'can_view_settings': False
-            }
+        permissions = {}
 
     users[username] = {
         'password': generate_password_hash(password),
@@ -2092,6 +2188,7 @@ def add_console_line(line, username=None):
         )
       | \x1B\[[\d;]*m               # SGR params (explicit)
       | \x1B\[\d*[A-HJKSTfn]        # Cursor/erase sequences
+      | \[(?:\d+(?:;\d+)*)?m        # Orphaned SGR fragments if ESC was stripped
       | [\x00-\x08\x0e-\x1f]        # Remaining control chars except \t \n \r
     ''', re.VERBOSE)
     clean_line = ansi_escape.sub('', line)
@@ -2409,15 +2506,135 @@ def monitor_process():
                 continue
             try:
                 decoded_line = line.decode('utf-8', errors='replace').rstrip('\r\n')
-                                                                            
-                decoded_line = ''.join(ch for ch in decoded_line if ch == '\t' or ch == '\n' or ch == '\r' or (ord(ch) >= 32 and ord(ch) != 127))
+                decoded_line = ''.join(ch for ch in decoded_line if ch in ('\t', '\n', '\r', '\x1b') or (ord(ch) >= 32 and ord(ch) != 127))
                 add_console_line(decoded_line)
             except Exception:
                 continue
 
+TELEMETRY_FILE = DATA_DIR / 'telemetry.json'
+_telemetry_lock = threading.Lock()
+_telemetry_cache = None
+_telemetry_last_flush = 0.0
+_telemetry_tick = 0
+
+
+def _load_telemetry():
+    global _telemetry_cache
+    if _telemetry_cache is not None:
+        return _telemetry_cache
+    try:
+        if TELEMETRY_FILE.exists():
+            data = json.loads(TELEMETRY_FILE.read_text(encoding='utf-8'))
+            if isinstance(data, dict):
+                _telemetry_cache = data
+                return _telemetry_cache
+    except Exception:
+        pass
+    _telemetry_cache = {}
+    return _telemetry_cache
+
+
+def _save_telemetry(force=False):
+    global _telemetry_last_flush
+    now = time.time()
+    if not force and (now - _telemetry_last_flush) < 60:
+        return
+    try:
+        data = _load_telemetry()
+        cutoff = (datetime.now() - timedelta(days=31)).strftime('%Y-%m-%d %H')
+        pruned = {k: v for k, v in data.items() if k >= cutoff}
+        _telemetry_cache = pruned
+        TELEMETRY_FILE.write_text(json.dumps(pruned), encoding='utf-8')
+        _telemetry_last_flush = now
+    except Exception:
+        pass
+
+
+def _record_telemetry_sample(crash=False):
+    hour_key = datetime.now().strftime('%Y-%m-%d %H')
+    with _telemetry_lock:
+        data = _load_telemetry()
+        bucket = data.get(hour_key) or {
+            'samples': 0,
+            'online_samples': 0,
+            'cpu_sum': 0.0,
+            'cpu_max': 0.0,
+            'mem_sum': 0.0,
+            'mem_max': 0.0,
+            'players_sum': 0,
+            'players_max': 0,
+            'crashes': 0,
+        }
+        if crash:
+            bucket['crashes'] = int(bucket.get('crashes', 0)) + 1
+            data[hour_key] = bucket
+            _save_telemetry(force=True)
+            return
+
+        running = bool(server_state.get('running'))
+        cpu = float(server_state.get('cpu_usage') or 0.0) if running else 0.0
+        mem = float(server_state.get('memory_usage') or 0.0) if running else 0.0
+        players = len(connected_players) if running else 0
+
+        bucket['samples'] += 1
+        if running:
+            bucket['online_samples'] += 1
+        bucket['cpu_sum'] += cpu
+        bucket['cpu_max'] = max(float(bucket['cpu_max']), cpu)
+        bucket['mem_sum'] += mem
+        bucket['mem_max'] = max(float(bucket['mem_max']), mem)
+        bucket['players_sum'] += players
+        bucket['players_max'] = max(int(bucket['players_max']), players)
+        data[hour_key] = bucket
+        _save_telemetry(force=False)
+
+
+_system_metrics_cache = None
+_system_metrics_lock = threading.Lock()
+
+
+def _get_system_metrics(refresh=False):
+    """Return host metrics sampled by the stats loop, with lazy initialization."""
+    global _system_metrics_cache
+    with _system_metrics_lock:
+        if _system_metrics_cache is not None and not refresh:
+            return dict(_system_metrics_cache)
+
+    try:
+        sys_cpu = round(float(psutil.cpu_percent(interval=None)), 1)
+    except Exception:
+        sys_cpu = 0.0
+    try:
+        vm = psutil.virtual_memory()
+        sys_mem_used_mb = round((vm.total - vm.available) / (1024 * 1024), 1)
+        sys_mem_total_mb = round(vm.total / (1024 * 1024), 1)
+        sys_mem_pct = round(float(vm.percent), 1)
+    except Exception:
+        sys_mem_used_mb = sys_mem_total_mb = sys_mem_pct = 0.0
+    try:
+        du = psutil.disk_usage(os.getcwd())
+        disk_used_gb = round(du.used / (1024 ** 3), 1)
+        disk_total_gb = round(du.total / (1024 ** 3), 1)
+        disk_pct = round(float(du.percent), 1)
+    except Exception:
+        disk_used_gb = disk_total_gb = disk_pct = 0.0
+    metrics = {
+        'sys_cpu': sys_cpu,
+        'sys_mem_used_mb': sys_mem_used_mb,
+        'sys_mem_total_mb': sys_mem_total_mb,
+        'sys_mem_pct': sys_mem_pct,
+        'disk_used_gb': disk_used_gb,
+        'disk_total_gb': disk_total_gb,
+        'disk_pct': disk_pct,
+    }
+    with _system_metrics_lock:
+        _system_metrics_cache = metrics
+        return dict(_system_metrics_cache)
+
+
 def update_stats():
     
-    global server_state, resource_states, connected_players, pending_actions, panel_connector_last_heartbeat
+    global server_state, resource_states, connected_players, pending_actions, panel_connector_last_heartbeat, _telemetry_tick
 
     while True:
         sync_server_state_with_system(emit_change=True)
@@ -2427,6 +2644,7 @@ def update_stats():
 
                 if not process.is_running():
                     add_console_line('!!! PROCESS TERMINATED !!!')
+                    _record_telemetry_sample(crash=True)
                     server_state['running'] = False
                     server_state['pid'] = None
                     server_state['attached'] = False
@@ -2441,14 +2659,9 @@ def update_stats():
 
                 server_state['cpu_usage'] = process.cpu_percent(interval=1)
                 server_state['memory_usage'] = process.memory_info().rss / (1024 * 1024)
-
-                socketio.emit('stats_update', {
-                    'cpu': server_state['cpu_usage'],
-                    'memory': server_state['memory_usage'],
-                    'uptime': int(time.time() - server_state['start_time']) if server_state['start_time'] else 0
-                })
             except psutil.NoSuchProcess:
                 add_console_line('!!! PROCESS NO LONGER EXISTS !!!')
+                _record_telemetry_sample(crash=True)
                 server_state['running'] = False
                 server_state['pid'] = None
                 server_state['attached'] = False
@@ -2461,6 +2674,21 @@ def update_stats():
                 socketio.emit('server_status', {'running': False})
             except Exception:
                 pass
+        else:
+            server_state['cpu_usage'] = 0.0
+            server_state['memory_usage'] = 0.0
+
+        sys_metrics = _get_system_metrics(refresh=True)
+        socketio.emit('stats_update', {
+            'cpu': server_state['cpu_usage'],
+            'memory': server_state['memory_usage'],
+            'uptime': int(time.time() - server_state['start_time']) if server_state['start_time'] else 0,
+            **sys_metrics,
+        })
+
+        _telemetry_tick += 1
+        if _telemetry_tick % 10 == 0:
+            _record_telemetry_sample(crash=False)
 
         time.sleep(2)
 
@@ -2512,9 +2740,9 @@ def parse_settings_xml():
                 result.setdefault('resources', []).append(text)
             elif tag == 'addon':
                 result.setdefault('addons', []).append(text)
-            elif tag in ('listed', 'chat'):
+            elif tag in ('listed', 'chat', 'gameevents', 'developer'):
                 result[tag] = text.lower() in ('true', '1', 'yes')
-            elif tag in ('port', 'maxplayers', 'episode', 'loglevel'):
+            elif tag in ('port', 'relayport', 'maxplayers', 'episode', 'loglevel'):
                 try:
                     result[tag] = int(text)
                 except ValueError:
@@ -2531,8 +2759,11 @@ def write_settings_xml(data):
     path = get_settings_xml_path()
     root = ET.Element('settings')
 
-    simple_fields = ['hostname', 'hostaddress', 'listed', 'port', 'maxplayers',
-                     'episode', 'secret', 'loglevel', 'chat']
+    simple_fields = [
+        'hostaddress', 'hostname', 'listed', 'listingkey', 'port', 'relayport',
+        'maxplayers', 'episode', 'secret', 'statstoken', 'loglevel', 'chat',
+        'gameevents', 'developer',
+    ]
     for field in simple_fields:
         if field in data:
             el = ET.SubElement(root, field)
@@ -2793,7 +3024,7 @@ def _reinstall_pending_active(username: str) -> bool:
 def _wipe_data_dir():
     DATA_DIR.mkdir(exist_ok=True)
     for item in DATA_DIR.iterdir():
-        if item.name in ('db.json', 'db.key'):
+        if item.name in ('db.json', 'db.key', 'storage_mode.json'):
             continue
         try:
             if item.is_dir():
@@ -3565,6 +3796,9 @@ def api_setup():
     username = (data.get('username') or '').strip()
     password = (data.get('password') or '').strip()
     db_info = data.get('db') or {}
+    storage_mode = str(data.get('storage_mode') or 'mysql').strip().lower()
+    if storage_mode not in ('mysql', 'local'):
+        storage_mode = 'mysql'
 
     if not username or not password:
         return jsonify({'success': False, 'message': 'Username and password required'})
@@ -3572,10 +3806,11 @@ def api_setup():
     if len(password) < 8:
         return jsonify({'success': False, 'message': 'Password must be at least 8 characters'})
 
-    required_db = ['host', 'port', 'user', 'password', 'database']
-    missing = [k for k in required_db if not str(db_info.get(k, '')).strip()]
-    if missing:
-        return jsonify({'success': False, 'message': 'Database fields required: ' + ', '.join(missing)})
+    if storage_mode == 'mysql':
+        required_db = ['host', 'port', 'user', 'password', 'database']
+        missing = [k for k in required_db if not str(db_info.get(k, '')).strip()]
+        if missing:
+            return jsonify({'success': False, 'message': 'Database fields required: ' + ', '.join(missing)})
 
     with setup_lock:
         if setup_state['running']:
@@ -3591,20 +3826,25 @@ def api_setup():
     def _runner():
         global config, panel_config
         try:
-            _setup_update(step='Database', progress=5, message='Saving database configuration')
-            db.save_db_config({
-                'host': db_info.get('host'),
-                'port': db_info.get('port'),
-                'user': db_info.get('user'),
-                'password': db_info.get('password'),
-                'database': db_info.get('database')
-            })
+            if storage_mode == 'local':
+                _setup_update(step='Storage', progress=5, message='Using local file database')
+                db.set_storage_mode('local')
+                _setup_update(step='Storage', progress=10, message='Local database ready (./data)')
+            else:
+                _setup_update(step='Database', progress=5, message='Saving database configuration')
+                db.save_db_config({
+                    'host': db_info.get('host'),
+                    'port': db_info.get('port'),
+                    'user': db_info.get('user'),
+                    'password': db_info.get('password'),
+                    'database': db_info.get('database')
+                })
 
-            _setup_update(step='Database', progress=10, message='Connecting to database')
-            db.ensure_schema()
+                _setup_update(step='Database', progress=10, message='Connecting to database')
+                db.ensure_schema()
 
-            _setup_update(step='Database', progress=15, message='Migrating existing JSON data')
-            storage.migrate_json_to_db(force=False)
+                _setup_update(step='Database', progress=15, message='Migrating existing JSON data')
+                storage.migrate_json_to_db(force=False)
 
                                                               
             config = storage.load_config()
@@ -3792,7 +4032,8 @@ def api_current_user():
         'role': user.get('role'),
         'created_at': user.get('created_at'),
         'last_login': user.get('last_login'),
-        'permissions': user.get('permissions', {}),
+        'permissions': get_effective_permissions(user),
+        'permission_overrides': user.get('permissions', {}),
         'avatar_url': resolve_avatar_url_for_user(session['username'], user.get('avatar') or '')
     })
 
@@ -3920,7 +4161,7 @@ def api_profile_change_password():
 
 @app.route('/api/panel-config', methods=['GET'])
 @login_required
-@admin_required
+@require_permission('can_view_settings')
 def api_get_panel_config():
     
     safe_cfg = dict(panel_config)
@@ -3937,7 +4178,7 @@ def api_get_panel_config():
 
 @app.route('/api/panel-config', methods=['POST'])
 @login_required
-@admin_required
+@require_permission('can_edit_settings')
 def api_set_panel_config():
     
     global panel_config
@@ -4060,7 +4301,7 @@ def api_get_locale(locale):
 
 @app.route('/api/settings', methods=['GET'])
 @login_required
-@admin_required
+@require_permission('can_view_settings')
 def api_get_settings():
     
     data = parse_settings_xml()
@@ -4073,17 +4314,23 @@ def api_get_settings():
 
 @app.route('/api/settings', methods=['POST'])
 @login_required
-@admin_required
+@require_permission('can_edit_settings')
 def api_set_settings():
     
-    data = request.json or {}
+    incoming = request.json or {}
     try:
         existing = parse_settings_xml() or {}
-        incoming_secret = data.get('secret')
+        data = dict(existing)
+        data.update(incoming)
+        incoming_secret = incoming.get('secret')
 
                                                   
         if not incoming_secret:
-            data['secret'] = existing.get('secret', '')
+            if 'secret' in existing:
+                data['secret'] = existing['secret']
+            else:
+                # Keep the server's documented default when creating a new file.
+                data.pop('secret', None)
         elif incoming_secret != existing.get('secret'):
             admin_password = (data.get('admin_password') or '').strip()
             if not admin_password:
@@ -4092,10 +4339,42 @@ def api_set_settings():
                 return jsonify({'success': False, 'message': 'Invalid password'}), 403
 
         data.pop('admin_password', None)
-        if 'resources' not in data:
-            data['resources'] = list(existing.get('resources', []))
-        if 'addons' not in data:
-            data['addons'] = list(existing.get('addons', []))
+
+        defaults = {
+            'port': 9999,
+            'relayport': 9998,
+            'maxplayers': 32,
+            'episode': 0,
+            'loglevel': 2,
+        }
+        ranges = {
+            'port': (1024, 65535),
+            'relayport': (1024, 65535),
+            'maxplayers': (1, 100),
+            'episode': (0, 2),
+            'loglevel': (0, 6),
+        }
+        for key, (minimum, maximum) in ranges.items():
+            try:
+                value = int(data.get(key, defaults[key]))
+            except (TypeError, ValueError):
+                try:
+                    value = int(existing.get(key, defaults[key]))
+                except (TypeError, ValueError):
+                    value = defaults[key]
+            data[key] = max(minimum, min(maximum, value))
+
+        boolean_defaults = {'listed': True, 'chat': True, 'gameevents': False, 'developer': False}
+        for key, default in boolean_defaults.items():
+            value = data.get(key, default)
+            data[key] = value if isinstance(value, bool) else str(value).strip().lower() in ('true', '1', 'yes')
+
+        data.setdefault('hostaddress', '127.0.0.1')
+        data.setdefault('hostname', 'HappinessMP Server')
+        data.setdefault('listingkey', '')
+        data.setdefault('statstoken', '')
+        data.setdefault('resources', list(existing.get('resources', [])))
+        data.setdefault('addons', list(existing.get('addons', [])))
         write_settings_xml(data)
         discord_runtime.request_status_refresh(force=True)
 
@@ -4545,7 +4824,7 @@ def api_logs_get(username, date):
                                                                               
 
 @app.route('/api/users', methods=['GET'])
-@admin_required
+@require_permission('can_manage_users')
 def api_list_users():
     
     users = init_users()
@@ -4560,20 +4839,30 @@ def api_list_users():
             'created_at': user_data.get('created_at'),
             'last_login': user_data.get('last_login'),
             'enabled': user_data.get('enabled', True),
-            'permissions': user_data.get('permissions', {})
+            'active': user_data.get('enabled', True),
+            'permissions': user_data.get('permissions', {}),
+            'effective_permissions': get_effective_permissions(user_data),
         })
 
     return jsonify({'users': user_list})
 
 @app.route('/api/users', methods=['POST'])
-@admin_required
+@require_permission('can_manage_users')
 def api_create_user():
     
     data = request.json or {}
     username = data.get('username', '').strip()
-    role = data.get('role', 'user')
+    role = str(data.get('role', 'viewer')).strip()
     permissions = data.get('permissions', None)
     password = (data.get('password') or '').strip()
+
+    _, actor = get_current_user()
+    if role == 'admin' and (not actor or actor.get('role') != 'admin'):
+        return jsonify({'success': False, 'message': 'Only an admin can assign the admin role'}), 403
+
+    roles = load_roles()
+    if role not in roles:
+        return jsonify({'success': False, 'message': 'Unknown role'}), 400
 
     if not username:
         return jsonify({'success': False, 'message': 'Username required'})
@@ -4605,7 +4894,7 @@ def api_create_user():
     return jsonify({'success': False, 'message': message})
 
 @app.route('/api/users/<username>', methods=['DELETE'])
-@admin_required
+@require_permission('can_manage_users')
 def api_delete_user(username):
     
     users = init_users()
@@ -4616,6 +4905,10 @@ def api_delete_user(username):
     if username == session['username']:
         return jsonify({'success': False, 'message': 'Cannot delete yourself'})
 
+    _, actor = get_current_user()
+    if users[username].get('role') == 'admin' and (not actor or actor.get('role') != 'admin'):
+        return jsonify({'success': False, 'message': 'Only an admin can delete an admin account'}), 403
+
     del users[username]
     save_users(users)
 
@@ -4624,28 +4917,139 @@ def api_delete_user(username):
     return jsonify({'success': True, 'message': 'User deleted'})
 
 @app.route('/api/users/<username>', methods=['PUT'])
-@admin_required
+@require_permission('can_manage_users')
 def api_update_user(username):
     
     users = init_users()
     if username not in users:
         return jsonify({'success': False, 'message': 'User not found'})
 
+    _, actor = get_current_user()
+    target = users[username]
     data = request.json or {}
 
-    if 'role' in data:
-        users[username]['role'] = data['role']
+    if target.get('role') == 'admin' and (not actor or actor.get('role') != 'admin'):
+        return jsonify({'success': False, 'message': 'Only an admin can modify an admin account'}), 403
 
-    if 'permissions' in data:
-        users[username]['permissions'] = data['permissions']
+    if 'role' in data:
+        new_role = str(data['role']).strip()
+        roles = load_roles()
+        if new_role not in roles:
+            return jsonify({'success': False, 'message': 'Unknown role'}), 400
+        if new_role == 'admin' and (not actor or actor.get('role') != 'admin'):
+            return jsonify({'success': False, 'message': 'Only an admin can promote to admin'}), 403
+        if username == session['username'] and target.get('role') == 'admin' and new_role != 'admin':
+            return jsonify({'success': False, 'message': 'Cannot demote yourself'}), 400
+        target['role'] = new_role
+
+    if 'permissions' in data and isinstance(data['permissions'], dict):
+        cleaned = {}
+        for k, v in data['permissions'].items():
+            if k in ALL_PERMISSION_KEYS and isinstance(v, bool):
+                cleaned[k] = v
+        target['permissions'] = cleaned
 
     save_users(users)
     log_user_action(session['username'], 'UPDATE_USER', f'Updated user: {username}')
     return jsonify({'success': True, 'message': 'User updated'})
 
 
+@app.route('/api/roles', methods=['GET'])
+@login_required
+def api_get_roles():
+    _, user = get_current_user()
+    perms = get_effective_permissions(user)
+    if user.get('role') != 'admin' and not (perms.get('can_manage_roles') or perms.get('can_manage_users')):
+        return jsonify({'error': 'Permission denied'}), 403
+    roles = load_roles()
+    users = init_users()
+    counts = {}
+    for u in users.values():
+        r = str(u.get('role') or 'viewer')
+        counts[r] = counts.get(r, 0) + 1
+    role_list = []
+    for rid, rdata in roles.items():
+        role_list.append({**rdata, 'user_count': counts.get(rid, 0)})
+    return jsonify({
+        'roles': role_list,
+        'catalog': PERMISSION_CATALOG,
+    })
+
+
+@app.route('/api/roles', methods=['POST'])
+@require_permission('can_manage_roles')
+def api_create_role():
+    data = request.json or {}
+    label = str(data.get('label') or '').strip()
+    if not label:
+        return jsonify({'success': False, 'message': 'Role name is required'}), 400
+    role_id = re.sub(r'[^a-z0-9_]+', '_', label.lower()).strip('_')[:32]
+    if not role_id or role_id in ('admin', 'owner'):
+        return jsonify({'success': False, 'message': 'Invalid or reserved role name'}), 400
+    roles = load_roles()
+    if role_id in roles:
+        return jsonify({'success': False, 'message': 'A role with this name already exists'}), 400
+    raw_perms = data.get('permissions') or {}
+    perms = {k: bool(raw_perms.get(k, False)) for k in ALL_PERMISSION_KEYS}
+    roles[role_id] = {
+        'id': role_id,
+        'label': label[:40],
+        'description': str(data.get('description') or '').strip()[:160],
+        'color': str(data.get('color') or '#a1a1aa').strip()[:24],
+        'builtin': False,
+        'locked': False,
+        'permissions': perms,
+    }
+    save_roles(roles)
+    log_user_action(session['username'], 'CREATE_ROLE', f'Created role: {role_id}')
+    return jsonify({'success': True, 'role': roles[role_id], 'message': f'Role "{label}" created'})
+
+
+@app.route('/api/roles/<role_id>', methods=['PUT'])
+@require_permission('can_manage_roles')
+def api_update_role(role_id):
+    if role_id == 'admin':
+        return jsonify({'success': False, 'message': 'Owner / Admin role is locked for security'}), 403
+    roles = load_roles()
+    if role_id not in roles:
+        return jsonify({'success': False, 'message': 'Role not found'}), 404
+    data = request.json or {}
+    role = roles[role_id]
+    if 'label' in data and str(data['label']).strip():
+        role['label'] = str(data['label']).strip()[:40]
+    if 'description' in data:
+        role['description'] = str(data['description'] or '').strip()[:160]
+    if 'color' in data and str(data['color']).strip():
+        role['color'] = str(data['color']).strip()[:24]
+    if 'permissions' in data and isinstance(data['permissions'], dict):
+        role['permissions'] = {k: bool(data['permissions'].get(k, False)) for k in ALL_PERMISSION_KEYS}
+    roles[role_id] = role
+    save_roles(roles)
+    log_user_action(session['username'], 'UPDATE_ROLE', f'Updated role: {role_id}')
+    return jsonify({'success': True, 'role': role, 'message': f'Role "{role["label"]}" updated'})
+
+
+@app.route('/api/roles/<role_id>', methods=['DELETE'])
+@require_permission('can_manage_roles')
+def api_delete_role(role_id):
+    roles = load_roles()
+    if role_id not in roles:
+        return jsonify({'success': False, 'message': 'Role not found'}), 404
+    if roles[role_id].get('builtin') or roles[role_id].get('locked'):
+        return jsonify({'success': False, 'message': 'Built-in roles cannot be deleted'}), 400
+    users = init_users()
+    for u in users.values():
+        if u.get('role') == role_id:
+            u['role'] = 'viewer'
+    save_users(users)
+    del roles[role_id]
+    save_roles(roles)
+    log_user_action(session['username'], 'DELETE_ROLE', f'Deleted role: {role_id}')
+    return jsonify({'success': True, 'message': 'Role deleted'})
+
+
 @app.route('/api/users/<username>/force-password-change', methods=['POST'])
-@admin_required
+@require_permission('can_manage_users')
 def api_force_password_change(username):
     
     users = init_users()
@@ -4659,7 +5063,7 @@ def api_force_password_change(username):
 
 
 @app.route('/api/users/<username>/toggle', methods=['POST'])
-@admin_required
+@require_permission('can_manage_users')
 def api_toggle_user(username):
     
     users = init_users()
@@ -5178,7 +5582,7 @@ def api_players_profile_notes(server_id):
 
 @app.route('/api/players/warn', methods=['POST'])
 @login_required
-@require_permission('can_control_server')
+@require_permission('can_moderate_players')
 def api_players_warn():
     
     global pending_actions
@@ -5222,7 +5626,7 @@ def api_players_warn():
 
 @app.route('/api/players/kick', methods=['POST'])
 @login_required
-@require_permission('can_control_server')
+@require_permission('can_moderate_players')
 def api_players_kick():
     
     global pending_actions
@@ -5253,7 +5657,7 @@ def api_players_kick():
 
 @app.route('/api/players/ban', methods=['POST'])
 @login_required
-@admin_required
+@require_permission('can_moderate_players')
 def api_players_ban():
     
     global pending_actions
@@ -5328,7 +5732,7 @@ def api_players_ban():
 
 @app.route('/api/players/bans', methods=['GET'])
 @login_required
-@admin_required
+@require_permission('can_view_players')
 def api_players_bans_list():
     
     return jsonify({'bans': load_bans()})
@@ -5336,7 +5740,7 @@ def api_players_bans_list():
 
 @app.route('/api/players/bans', methods=['DELETE'])
 @login_required
-@admin_required
+@require_permission('can_moderate_players')
 def api_players_bans_remove():
     
     data = request.json or {}
@@ -5404,7 +5808,92 @@ def api_status():
         'restart_count': server_state['restart_count'],
         'cpu': server_state['cpu_usage'],
         'memory': server_state['memory_usage'],
-        'attached': server_state['attached']
+        'attached': server_state['attached'],
+        **_get_system_metrics(),
+    })
+
+
+@app.route('/api/telemetry')
+@login_required
+@require_permission('can_view_dashboard')
+def api_telemetry():
+    period = (request.args.get('period') or 'day').strip().lower()
+    if period not in ('day', 'week', 'month'):
+        period = 'day'
+
+    with _telemetry_lock:
+        raw = dict(_load_telemetry())
+
+    now = datetime.now().replace(minute=0, second=0, microsecond=0)
+    buckets = []
+
+    def _agg(keys):
+        samples = online = crashes = players_max = 0
+        cpu_sum = cpu_max = mem_sum = 0.0
+        for k in keys:
+            b = raw.get(k)
+            if not b:
+                continue
+            samples += int(b.get('samples', 0))
+            online += int(b.get('online_samples', 0))
+            crashes += int(b.get('crashes', 0))
+            cpu_sum += float(b.get('cpu_sum', 0.0))
+            cpu_max = max(cpu_max, float(b.get('cpu_max', 0.0)))
+            mem_sum += float(b.get('mem_sum', 0.0))
+            players_max = max(players_max, int(b.get('players_max', 0)))
+        return {
+            'samples': samples,
+            'online_samples': online,
+            'cpu_avg': round(cpu_sum / samples, 1) if samples else 0.0,
+            'cpu_max': round(cpu_max, 1),
+            'mem_avg': round(mem_sum / samples, 1) if samples else 0.0,
+            'players_max': players_max,
+            'uptime_pct': round((online / samples) * 100.0, 1) if samples else 0.0,
+            'crashes': crashes,
+        }
+
+    if period == 'day':
+        for i in range(7, -1, -1):
+            end_dt = now - timedelta(hours=i * 3)
+            keys = [(end_dt - timedelta(hours=h)).strftime('%Y-%m-%d %H') for h in range(3)]
+            info = _agg(keys)
+            info['label'] = end_dt.strftime('%H:00')
+            buckets.append(info)
+    elif period == 'week':
+        for i in range(6, -1, -1):
+            day_dt = now - timedelta(days=i)
+            day_str = day_dt.strftime('%Y-%m-%d')
+            keys = [f'{day_str} {h:02d}' for h in range(24)]
+            info = _agg(keys)
+            info['label'] = day_dt.strftime('%a')
+            buckets.append(info)
+    else:
+        for i in range(3, -1, -1):
+            keys = []
+            for d in range(7):
+                day_dt = now - timedelta(days=i * 7 + d)
+                day_str = day_dt.strftime('%Y-%m-%d')
+                keys.extend([f'{day_str} {h:02d}' for h in range(24)])
+            info = _agg(keys)
+            info['label'] = f'W{4 - i}'
+            buckets.append(info)
+
+    total_samples = sum(b['samples'] for b in buckets)
+    total_online = sum(b['online_samples'] for b in buckets)
+    total_crashes = sum(b['crashes'] for b in buckets)
+    peak_cpu = max((b['cpu_max'] for b in buckets), default=0.0)
+    peak_players = max((b['players_max'] for b in buckets), default=0)
+
+    return jsonify({
+        'period': period,
+        'buckets': buckets,
+        'summary': {
+            'total_samples': total_samples,
+            'uptime_pct': round((total_online / total_samples) * 100.0, 1) if total_samples else None,
+            'crashes': total_crashes,
+            'peak_cpu': round(peak_cpu, 1),
+            'peak_players': peak_players,
+        },
     })
 
 @app.route('/api/start', methods=['POST'])

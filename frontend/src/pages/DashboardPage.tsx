@@ -4,6 +4,7 @@ import {
   Avatar,
   Button,
   Chip,
+  Drawer,
   Input,
   Label,
   Modal,
@@ -13,14 +14,18 @@ import {
 import {
   BarChart3,
   Boxes,
+  Download,
   FileText,
   FolderOpen,
   LogOut,
   Menu,
   MoreHorizontal,
+  Play,
   Puzzle,
+  RotateCcw,
   Settings,
   Shield,
+  Square,
   Terminal,
   UserCog,
   Users,
@@ -59,6 +64,7 @@ export function DashboardPage() {
   const [players, setPlayers] = useState<PlayerEntry[]>([]);
   const [updateInfo, setUpdateInfo] = useState<any>(null);
   const [wsConnected, setWsConnected] = useState(true);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const [profileOpen, setProfileOpen] = useState(false);
@@ -73,7 +79,10 @@ export function DashboardPage() {
   }
 
   async function refreshStatus() {
+    const t0 = performance.now();
     const data = await apiFetch('/api/status');
+    const elapsed = Math.max(1, Math.round(performance.now() - t0));
+    setLatencyMs(elapsed);
     if (data && typeof data.running === 'boolean') setStatus(data);
   }
 
@@ -189,7 +198,7 @@ export function DashboardPage() {
 
   const perms = user?.permissions || {};
   const isAdmin = user?.role === 'admin';
-  const canControlServer = isAdmin || perms.can_control_server !== false;
+  const canControlServer = isAdmin || !!perms.can_control_server;
 
   const navGroups: {
     group: string;
@@ -198,25 +207,25 @@ export function DashboardPage() {
     {
       group: 'Server',
       items: [
-        { id: 'dashboard', label: t('nav_dashboard', 'Dashboard'), icon: <BarChart3 className="w-4 h-4" />, visible: true },
-        { id: 'console', label: t('nav_console', 'Console'), icon: <Terminal className="w-4 h-4" />, visible: perms.can_view_console !== false },
-        { id: 'players', label: t('nav_players', 'Players'), icon: <Users className="w-4 h-4" />, visible: true },
+        { id: 'dashboard', label: t('nav_dashboard', 'Dashboard'), icon: <BarChart3 className="w-4 h-4" />, visible: isAdmin || perms.can_view_dashboard !== false },
+        { id: 'console', label: t('nav_console', 'Console'), icon: <Terminal className="w-4 h-4" />, visible: isAdmin || !!perms.can_view_console },
+        { id: 'players', label: t('nav_players', 'Players'), icon: <Users className="w-4 h-4" />, visible: isAdmin || !!perms.can_view_players },
       ],
     },
     {
       group: 'Management',
       items: [
-        { id: 'files', label: t('nav_files', 'Files'), icon: <FolderOpen className="w-4 h-4" />, visible: perms.can_manage_files !== false },
+        { id: 'files', label: t('nav_files', 'Files'), icon: <FolderOpen className="w-4 h-4" />, visible: isAdmin || !!perms.can_view_files },
         { id: 'resources', label: t('nav_resources', 'Resources'), icon: <Puzzle className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_resources },
-        { id: 'addons', label: t('nav_addons', 'Addons'), icon: <Boxes className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_addons },
+        { id: 'addons', label: t('nav_addons', 'Addons'), icon: <Boxes className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_resources || !!perms.can_manage_addons },
       ],
     },
     {
       group: 'System',
       items: [
-        { id: 'settings', label: t('nav_settings', 'Settings'), icon: <Settings className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_settings },
-        { id: 'logs', label: t('nav_logs', 'Logs'), icon: <FileText className="w-4 h-4" />, visible: true },
-        { id: 'admin', label: t('nav_admin', 'Admin'), icon: <Shield className="w-4 h-4" />, visible: isAdmin },
+        { id: 'settings', label: t('nav_settings', 'Settings'), icon: <Settings className="w-4 h-4" />, visible: isAdmin || !!perms.can_view_settings || !!perms.can_edit_settings },
+        { id: 'logs', label: t('nav_logs', 'Logs'), icon: <FileText className="w-4 h-4" />, visible: isAdmin || !!perms.can_view_logs },
+        { id: 'admin', label: t('nav_admin', 'Admin'), icon: <Shield className="w-4 h-4" />, visible: isAdmin || !!perms.can_manage_users || !!perms.can_manage_roles },
       ],
     },
   ];
@@ -240,6 +249,71 @@ export function DashboardPage() {
       </div>
 
       <Separator className="bg-white/10" />
+
+      {/* Primary Server Power Controls in Sidebar */}
+      {canControlServer && (
+        <div className="p-2.5 rounded-xl bg-[#0d0d0f] border border-white/10 flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-300">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  status.running
+                    ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.7)]'
+                    : 'bg-rose-500'
+                }`}
+              />
+              <span>{status.running ? 'Server Online' : 'Server Offline'}</span>
+            </span>
+            {status.running && status.pid && (
+              <span className="text-[10px] font-mono text-zinc-500">PID {status.pid}</span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            <Button
+              size="sm"
+              variant="primary"
+              isDisabled={status.running}
+              onPress={() => handleServerAction('start')}
+              className="w-full h-8 rounded-lg font-semibold justify-center px-1.5 text-[11px]"
+            >
+              <Play className="w-3 h-3 shrink-0" />
+              <span>Start</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              isDisabled={!status.running}
+              onPress={() => handleServerAction('restart')}
+              className="w-full h-8 rounded-lg font-semibold justify-center px-1.5 text-[11px]"
+            >
+              <RotateCcw className="w-3 h-3 shrink-0" />
+              <span>Restart</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              isDisabled={!status.running}
+              onPress={() => handleServerAction('stop')}
+              className="w-full h-8 rounded-lg font-semibold justify-center px-1.5 text-[11px]"
+            >
+              <Square className="w-3 h-3 shrink-0" />
+              <span>Stop</span>
+            </Button>
+          </div>
+          {updateInfo?.available && (
+            <Button
+              size="sm"
+              variant="secondary"
+              isDisabled={!!updateInfo.updating}
+              onPress={handleUpdateNow}
+              className="w-full h-8 rounded-lg font-semibold justify-center text-[11px]"
+            >
+              <Download className="w-3 h-3" />
+              <span>{t('update_now', 'Install Update')}</span>
+            </Button>
+          )}
+        </div>
+      )}
 
       <nav className="flex flex-col gap-4 flex-1 overflow-y-auto pr-0.5">
         {navGroups.map((group) => {
@@ -324,22 +398,28 @@ export function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white flex">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-[264px] shrink-0 sticky top-0 h-screen">
+    <div className="min-h-screen lg:h-screen bg-black text-white flex overflow-x-clip lg:overflow-hidden">
+      {/* Desktop Static Sidebar */}
+      <aside className="hidden lg:block w-[264px] shrink-0 h-screen">
         {SidebarContent}
       </aside>
 
-      {/* Mobile Slide-Over Drawer */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div className="w-[272px] h-full relative z-10 shadow-2xl">{SidebarContent}</div>
-          <div className="flex-1 bg-black/80 backdrop-blur-xs" onClick={() => setMobileMenuOpen(false)} />
-        </div>
-      )}
+      {/* Accessible mobile navigation drawer */}
+      <Drawer>
+        <Drawer.Backdrop isOpen={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <Drawer.Content placement="left" className="w-[min(88vw,320px)] max-w-none p-0">
+            <Drawer.Dialog className="h-full bg-[#050505] text-white">
+              <Drawer.Header className="sr-only">
+                <Drawer.Heading>Navigation menu</Drawer.Heading>
+              </Drawer.Header>
+              <Drawer.Body className="h-full overflow-hidden p-0">{SidebarContent}</Drawer.Body>
+            </Drawer.Dialog>
+          </Drawer.Content>
+        </Drawer.Backdrop>
+      </Drawer>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 flex flex-col pb-20 lg:pb-6">
+      <main className="flex-1 min-w-0 flex flex-col pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:pb-6 lg:h-screen lg:overflow-y-auto">
         <header className="sticky top-0 z-30 bg-black/85 backdrop-blur-md border-b border-white/10 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <Button
@@ -359,7 +439,7 @@ export function DashboardPage() {
 
           <div className="flex items-center gap-2 shrink-0">
             {!wsConnected && (
-              <Chip size="sm" className="bg-white/10 border border-white/25 text-white text-[11px]">
+              <Chip size="sm" className="bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px]">
                 Reconnecting...
               </Chip>
             )}
@@ -367,20 +447,29 @@ export function DashboardPage() {
               size="sm"
               className={
                 status.running
-                  ? 'bg-white text-black font-semibold text-[11px]'
-                  : 'bg-white/10 text-zinc-400 border border-white/15 text-[11px]'
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold text-[11px] px-2.5'
+                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/30 font-semibold text-[11px] px-2.5'
               }
             >
-              {status.running ? 'Online' : 'Offline'}
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    status.running ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                  }`}
+                />
+                {status.running ? 'Online' : 'Offline'}
+              </span>
             </Chip>
           </div>
         </header>
 
-        <div className="p-3.5 sm:p-6 max-w-[1400px] w-full mx-auto">
+        <div key={activePage} className="p-3.5 sm:p-6 max-w-[1400px] w-full mx-auto animate-panel-in">
           {activePage === 'dashboard' && (
             <OverviewTab
               status={status}
+              players={players}
               playerCount={players.length}
+              latencyMs={latencyMs}
               consoleLines={consoleLines}
               updateInfo={updateInfo}
               canControl={canControlServer}
@@ -410,6 +499,7 @@ export function DashboardPage() {
             <FilesTab
               t={t}
               onNotify={notify}
+              canEdit={isAdmin || !!perms.can_edit_files}
               serverRunning={status.running}
               onRestart={canControlServer ? () => handleServerAction('restart') : undefined}
             />
@@ -444,7 +534,7 @@ export function DashboardPage() {
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 lg:hidden bg-[#070707]/95 backdrop-blur-md border-t border-white/12 px-2 py-1.5 grid grid-cols-5 gap-1">
+      <nav aria-label="Quick navigation" className="mobile-quick-nav fixed bottom-0 inset-x-0 z-40 lg:hidden bg-[#070707]/95 backdrop-blur-md border-t border-white/12 px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] grid grid-cols-5 gap-1">
         {mobileQuickTabs.map((tab) => {
           const active = activePage === tab.id;
           return (
@@ -452,6 +542,7 @@ export function DashboardPage() {
               key={tab.id}
               type="button"
               onClick={() => setActivePage(tab.id)}
+              aria-current={active ? 'page' : undefined}
               className={`flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-xl text-[10px] font-semibold transition-colors cursor-pointer ${
                 active ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'
               }`}
@@ -464,6 +555,7 @@ export function DashboardPage() {
         <button
           type="button"
           onClick={() => setMobileMenuOpen(true)}
+          aria-label="Open all navigation options"
           className="flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-xl text-[10px] font-semibold text-zinc-400 hover:text-white cursor-pointer"
         >
           <MoreHorizontal className="w-4 h-4" />
@@ -504,7 +596,7 @@ export function DashboardPage() {
 
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed bottom-20 lg:bottom-5 right-4 sm:right-5 z-50 bg-white text-black px-4 py-2.5 rounded-xl text-xs font-semibold shadow-2xl border border-white/20">
+        <div className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] lg:bottom-5 right-4 sm:right-5 z-50 max-w-[calc(100vw-2rem)] bg-white text-black px-4 py-2.5 rounded-xl text-xs font-semibold shadow-2xl border border-white/20">
           {toastMsg}
         </div>
       )}

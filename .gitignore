@@ -19,6 +19,14 @@ logs/
 *.tmp
 *.bak
 *.key
+*.pem
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+*.pid
+*.secret
 
 # --- HappinessMP server runtime (downloaded binary, resources, addons) ---
 HPNMP/
@@ -33,6 +41,7 @@ frontend/.vite/
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # --- Editors / OS junk ---
 .vscode/

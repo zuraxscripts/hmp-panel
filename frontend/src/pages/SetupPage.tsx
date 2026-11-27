@@ -12,7 +12,7 @@ import {
   Spinner,
   TextField,
 } from '@heroui/react';
-import { ArrowLeft, ArrowRight, Database, KeyRound, Lock, Network, Plug, User } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Database, HardDrive, KeyRound, Lock, Network, Plug, User } from 'lucide-react';
 import { createTranslator, loadLocale, LocaleMap } from '../lib/api';
 
 export function SetupPage() {
@@ -34,6 +34,7 @@ export function SetupPage() {
     state: '',
     text: 'Not checked',
   });
+  const [storageMode, setStorageMode] = useState<'mysql' | 'local'>('mysql');
 
   const [alert, setAlert] = useState<{ type: 'error' | 'success'; msg: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -156,8 +157,9 @@ export function SetupPage() {
         return;
       }
       setDbStatus({ state: 'ok', text: 'Connected' });
+      setStorageMode('mysql');
       setStep(4);
-      startSetup(db);
+      startSetup(db, 'mysql');
     } catch {
       setDbStatus({ state: 'bad', text: 'Connection failed' });
       setAlert({ type: 'error', msg: 'Database connection failed' });
@@ -166,14 +168,28 @@ export function SetupPage() {
     }
   }
 
-  async function startSetup(db: { host: string; port: string; user: string; password: string; database: string }) {
-    setLogs([`Snapshot: Admin=${username} | DB ${db.host}:${db.port} / ${db.user} / ${db.database} / ${maskValue(db.password)}`]);
+  async function startLocalSetup() {
+    setAlert(null);
+    setStorageMode('local');
+    setStep(4);
+    await startSetup(null, 'local');
+  }
+
+  async function startSetup(
+    db: { host: string; port: string; user: string; password: string; database: string } | null,
+    mode: 'mysql' | 'local'
+  ) {
+    if (mode === 'mysql' && db) {
+      setLogs([`Snapshot: Admin=${username} | DB ${db.host}:${db.port} / ${db.user} / ${db.database} / ${maskValue(db.password)}`]);
+    } else {
+      setLogs([`Snapshot: Admin=${username} | Storage: Local DB (file, ./data)`]);
+    }
     setAlert({ type: 'success', msg: 'Setup started. Please wait...' });
     try {
       const res = await fetch('/api/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, username: username.trim(), password, db }),
+        body: JSON.stringify({ pin, username: username.trim(), password, storage_mode: mode, db: db || {} }),
       });
       const data = await res.json();
       if (data.success) {
@@ -220,30 +236,30 @@ export function SetupPage() {
   const steps = [
     { id: 1, label: '1. PIN' },
     { id: 2, label: '2. Admin' },
-    { id: 3, label: '3. Database' },
+    { id: 3, label: '3. Storage' },
     { id: 4, label: '4. Setup' },
   ];
 
   return (
-    <div className="min-h-screen w-full bg-black text-white flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen w-full bg-black text-white flex items-center justify-center p-3 sm:p-6 relative overflow-x-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_500px_at_50%_-10%,rgba(255,255,255,0.07),transparent_65%)]" />
 
-      <div className="w-full max-w-[490px] relative z-10 flex flex-col gap-6">
+      <div className="w-full max-w-[490px] relative z-10 flex flex-col gap-5 sm:gap-6">
         <div className="flex flex-col items-center text-center gap-2">
-          <img src="/logo.png" alt="HappinessMP" className="w-48 h-auto grayscale contrast-110 mb-1" />
-          <h1 className="text-2xl font-bold tracking-tight text-white">{t('brand_name', 'HappinessMP')}</h1>
+          <img src="/logo.png" alt="HappinessMP" className="w-40 sm:w-48 h-auto grayscale contrast-110 mb-1" />
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">{t('brand_name', 'HappinessMP')}</h1>
           <p className="text-xs text-zinc-400">{t('brand_tagline', 'GTA IV Multiplayer Server Manager')}</p>
         </div>
 
         <Card className="bg-[#0a0a0a] border border-white/12 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
-          <Card.Header className="px-7 pt-7 pb-2 flex flex-col gap-1">
-            <Card.Title className="text-xl font-bold text-white">{t('setup_title', 'Initial Setup')}</Card.Title>
+          <Card.Header className="px-4 sm:px-7 pt-5 sm:pt-7 pb-2 flex flex-col gap-1">
+            <Card.Title className="text-lg sm:text-xl font-bold text-white">{t('setup_title', 'Initial Setup')}</Card.Title>
             <Card.Description className="text-xs text-zinc-400">
               {t('setup_subtitle', 'Create your administrator account to get started')}
             </Card.Description>
           </Card.Header>
 
-          <Card.Content className="px-7 pb-7 pt-3 flex flex-col gap-5">
+          <Card.Content className="px-4 sm:px-7 pb-5 sm:pb-7 pt-3 flex flex-col gap-5">
             <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#0d0d0d] border border-white/10 rounded-xl">
               {steps.map((s) => (
                 <div
@@ -432,8 +448,13 @@ export function SetupPage() {
                   <span className="text-xs text-zinc-400">Connection Status</span>
                   <Chip
                     size="sm"
-                    variant={dbStatus.state === 'ok' ? 'primary' : 'soft'}
-                    className={dbStatus.state === 'ok' ? 'bg-white text-black font-semibold' : 'bg-white/10 text-zinc-200'}
+                    className={
+                      dbStatus.state === 'ok'
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold'
+                        : dbStatus.state === 'bad'
+                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30 font-semibold'
+                        : 'bg-white/10 text-zinc-300'
+                    }
                   >
                     {dbStatus.text}
                   </Chip>
@@ -458,6 +479,25 @@ export function SetupPage() {
                     <span>{loading ? 'Testing...' : 'Test & Continue'}</span>
                   </Button>
                 </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-[10px] uppercase tracking-wider text-zinc-500">or</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+
+                <Button
+                  variant="secondary"
+                  isDisabled={loading}
+                  onPress={startLocalSetup}
+                  className="w-full h-11 rounded-xl bg-zinc-900 border border-white/12 text-white"
+                >
+                  <HardDrive className="w-4 h-4" />
+                  <span>Use Local DB (file) — no SQL needed</span>
+                </Button>
+                <p className="text-[11px] text-zinc-500 text-center -mt-1">
+                  Stores users and settings in <span className="font-mono text-zinc-400">./data/*.json</span> on this machine.
+                </p>
               </div>
             )}
 
@@ -479,17 +519,34 @@ export function SetupPage() {
                     <div className="font-semibold text-white">{username}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">DB Host</div>
-                    <div className="font-mono text-white">{dbHost}:{dbPort}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Storage</div>
+                    <div className="font-mono text-white">
+                      {storageMode === 'local' ? 'Local DB (file)' : `${dbHost}:${dbPort}`}
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">DB User</div>
-                    <div className="font-mono text-white">{dbUser}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">DB Name</div>
-                    <div className="font-mono text-white">{dbName}</div>
-                  </div>
+                  {storageMode === 'mysql' ? (
+                    <>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-zinc-500">DB User</div>
+                        <div className="font-mono text-white">{dbUser}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-zinc-500">DB Name</div>
+                        <div className="font-mono text-white">{dbName}</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-zinc-500">Data folder</div>
+                        <div className="font-mono text-white">./data</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-zinc-500">Format</div>
+                        <div className="font-mono text-white">JSON files</div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div

@@ -104,11 +104,18 @@ export function ResourcesTab({ kind, t, onNotify }: ResourcesTabProps) {
                       size="sm"
                       className={
                         isRunning
-                          ? 'bg-white text-black font-semibold text-[11px] shrink-0'
-                          : 'bg-white/10 text-zinc-400 border border-white/15 text-[11px] shrink-0'
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold text-[11px] shrink-0 px-2.5'
+                          : 'bg-rose-500/15 text-rose-400 border border-rose-500/30 font-semibold text-[11px] shrink-0 px-2.5'
                       }
                     >
-                      {isRunning ? 'Running' : 'Stopped'}
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                          }`}
+                        />
+                        {isRunning ? 'Running' : 'Stopped'}
+                      </span>
                     </Chip>
                   </div>
 
