@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Chip, Input, Tabs, TextField } from '@heroui/react';
 import {
   Activity,
@@ -89,7 +89,7 @@ function CircleRing({
   );
 }
 
-const QUICK_CMDS = ['status', 'players', 'help'];
+const QUICK_CMDS = ['help', 'stats'];
 
 export function OverviewTab({
   status,
@@ -105,6 +105,7 @@ export function OverviewTab({
   onNavigate,
 }: OverviewTabProps) {
   const [quickCmd, setQuickCmd] = useState('');
+  const liveConsoleRef = useRef<HTMLDivElement>(null);
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day');
   const [telemetry, setTelemetry] = useState<{
     buckets: {
@@ -125,6 +126,11 @@ export function OverviewTab({
       peak_players: number;
     };
   } | null>(null);
+
+  useEffect(() => {
+    const consoleElement = liveConsoleRef.current;
+    if (consoleElement) consoleElement.scrollTop = consoleElement.scrollHeight;
+  }, [consoleLines]);
 
   // Real psutil host & process metrics
   const hostCpu = Math.min(100, Math.max(0, status.sys_cpu ?? status.cpu ?? 0));
@@ -312,8 +318,8 @@ export function OverviewTab({
             </div>
           </Card.Header>
 
-          <Card.Content className="p-3 sm:p-4 flex flex-col gap-3 flex-1 justify-between">
-            <div className="bg-[#050506] border border-white/8 rounded-xl p-3.5 font-mono text-[11px] sm:text-xs text-zinc-200 h-72 sm:h-96 lg:flex-1 lg:min-h-[360px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
+          <Card.Content className="min-h-0 flex-1 p-3 sm:p-4 flex flex-col gap-3">
+            <div ref={liveConsoleRef} className="min-h-0 h-72 sm:h-80 lg:h-[420px] max-h-[60vh] shrink-0 bg-[#050506] border border-white/8 rounded-xl p-3.5 font-mono text-[11px] sm:text-xs text-zinc-200 overflow-y-auto whitespace-pre-wrap leading-relaxed">
               {consoleLines.length
                 ? consoleLines.slice(-150).map(cleanConsoleLine).join('\n')
                 : 'Waiting for server console output...'}
@@ -331,7 +337,7 @@ export function OverviewTab({
                       onClick={() => handleQuickSend(undefined, q)}
                       className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#141416] border border-white/10 text-zinc-300 hover:bg-white hover:text-black hover:border-white disabled:opacity-40 transition-colors cursor-pointer"
                     >
-                      /{q}
+                      {q}
                     </button>
                   ))}
                 </div>
