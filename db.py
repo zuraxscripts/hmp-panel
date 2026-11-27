@@ -151,6 +151,18 @@ def test_connection(cfg: dict):
         conn.close()
 
 
+def reset_panel_data():
+    """Delete every row from the panel tables without dropping the schema."""
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM bans')
+            cur.execute('DELETE FROM users')
+            cur.execute('DELETE FROM app_config')
+    finally:
+        conn.close()
+
+
 def ensure_schema():
     conn = connect()
     try:

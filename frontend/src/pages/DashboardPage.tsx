@@ -162,7 +162,7 @@ export function DashboardPage() {
       method: 'POST',
       body: JSON.stringify({ command }),
     });
-    if (!res.success && res.message) notify(res.message);
+    if (res.message) notify(res.message);
   }
 
   async function handleLogout() {

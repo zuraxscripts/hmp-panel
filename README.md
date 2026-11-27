@@ -341,6 +341,28 @@ HMP Panel can check and apply updates for:
 
 The updater stores state in `data/update_status.json`, `data/update_job.json`, and `data/update.log`.
 
+### Clean reinstall from the console
+
+You can reset the panel to a clean, ready-to-use server from the console (the server does not need to be running):
+
+```text
+reinstall-panel
+CONFIRM
+```
+
+`reinstall-panel` only arms the action and prints a warning. Typing `CONFIRM` within 120 seconds then:
+
+| Step | Result |
+| --- | --- |
+| Server | Stopped if running |
+| Database | All panel tables cleared |
+| Panel data | `data/` wiped (DB credentials are kept) |
+| Server files | `HPNMP/` removed |
+| Fresh install | Latest HappinessMP server + hpm-connector downloaded |
+| Admin | Current admin account is kept, so no setup wizard appears |
+
+After it finishes, the panel stays logged in and the clean server is ready to start.
+
 ## Security Notes
 
 | Area | Recommendation |

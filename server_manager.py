@@ -2771,6 +2771,205 @@ def update_connector_config(panel_secret: str, panel_host: str = None):
 
                                                           
 
+REINSTALL_CONFIRM_SECONDS = 120
+REINSTALL_CONFIRM_WORD = 'CONFIRM'
+_reinstall_lock = threading.Lock()
+_reinstall_pending = {}
+_reinstall_state = {'running': False, 'started_at': None}
+
+
+def _reinstall_pending_active(username: str) -> bool:
+    now = time.time()
+    with _reinstall_lock:
+        expiry = _reinstall_pending.get(username)
+        if expiry is None:
+            return False
+        if expiry < now:
+            _reinstall_pending.pop(username, None)
+            return False
+        return True
+
+
+def _wipe_data_dir():
+    DATA_DIR.mkdir(exist_ok=True)
+    for item in DATA_DIR.iterdir():
+        if item.name in ('db.json', 'db.key'):
+            continue
+        try:
+            if item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+            else:
+                item.unlink()
+        except Exception:
+            pass
+
+
+def _remove_server_dir():
+    root = Path.cwd().resolve()
+    target = Path(get_server_dir()).resolve()
+    if target == root or root not in target.parents:
+        raise RuntimeError(f'Refusing to delete server directory outside panel root: {target}')
+    shutil.rmtree(target, ignore_errors=True)
+    if target.exists():
+        raise RuntimeError(f'Could not fully remove server directory: {target}')
+
+
+def _run_panel_reinstall(username: str):
+    global config, panel_config, server_process, server_state, player_profiles
+    global connected_players, pending_actions, resource_states, panel_connector_last_heartbeat
+
+    try:
+        add_console_line('[REINSTALL] Stopping server (if running)...', username)
+        if server_state.get('running'):
+            try:
+                stop_server(username)
+            except Exception as e:
+                add_console_line(f'[REINSTALL] Could not stop server cleanly: {e}', username)
+
+        users = storage.load_users()
+        admin = dict(users.get(username) or {})
+        if not admin:
+            raise RuntimeError('Current admin account could not be loaded')
+        admin['role'] = 'admin'
+        admin['enabled'] = True
+
+        old_panel = storage.load_panel_config() or {}
+        panel_secret = str(old_panel.get('panel_secret') or '').strip()
+        if not panel_secret or panel_secret == 'changeme':
+            panel_secret = secrets.token_hex(24)
+        panel_port = old_panel.get('panel_port') or PANEL_PORT
+
+        add_console_line('[REINSTALL] Clearing database...', username)
+        if db.is_configured():
+            try:
+                db.reset_panel_data()
+            except Exception:
+                # Keep the current admin account usable if the wipe failed midway.
+                try:
+                    storage.save_users({username: admin})
+                except Exception:
+                    pass
+                raise
+
+        add_console_line('[REINSTALL] Clearing panel data...', username)
+        _wipe_data_dir()
+        try:
+            if storage.PANEL_CONFIG_FILE.exists():
+                storage.PANEL_CONFIG_FILE.unlink()
+        except Exception:
+            pass
+        DATA_DIR.mkdir(exist_ok=True)
+        LOGS_DIR.mkdir(exist_ok=True)
+
+                                                                              
+        storage.save_users({username: admin})
+
+        config = storage.load_config()
+        config['server_path'] = './HPNMP/HappMP'
+        config['server_name'] = 'HappMP'
+        config['auto_restart'] = False
+        storage.save_config(config)
+
+        panel_config = storage.load_panel_config()
+        panel_config['panel_secret'] = panel_secret
+        panel_config['panel_port'] = panel_port
+        panel_config['panel_version'] = _load_panel_version()
+        storage.save_panel_config(panel_config)
+
+        add_console_line('[REINSTALL] Removing old server files...', username)
+        _remove_server_dir()
+
+        add_console_line('[REINSTALL] Downloading clean HappinessMP server...', username)
+        ensure_server_files()
+        config = storage.load_config()
+
+        add_console_line('[REINSTALL] Installing hpm-connector...', username)
+        install_hpm_connector()
+        ensure_connector_resource()
+        update_connector_config(panel_secret, get_panel_host())
+
+        server_process = None
+        server_state.update({
+            'running': False,
+            'pid': None,
+            'start_time': None,
+            'auto_restart': False,
+            'restart_count': 0,
+            'cpu_usage': 0,
+            'memory_usage': 0,
+            'attached': False
+        })
+        connected_players = {}
+        pending_actions = []
+        resource_states = {}
+        player_profiles = {}
+        panel_connector_last_heartbeat = 0.0
+
+        socketio.emit('server_status', {'running': False})
+        socketio.emit('players_update', {'players': []})
+        try:
+            discord_runtime.sync_from_config(force=True)
+        except Exception:
+            pass
+
+        add_console_line('[REINSTALL] Done. Clean server is ready.', username)
+        log_user_action(username, 'REINSTALL_PANEL', 'success')
+    except Exception as e:
+        add_console_line(f'[REINSTALL] FAILED: {e}', username)
+        try:
+            log_user_action(username, 'REINSTALL_PANEL', f'failed: {e}')
+        except Exception:
+            pass
+    finally:
+        with _reinstall_lock:
+            _reinstall_state['running'] = False
+
+
+def handle_panel_console_command(command: str, username: str):
+    """Handle panel-level console commands. Returns a response dict or None."""
+    cmd = str(command or '').strip()
+    if not cmd:
+        return None
+    lowered = cmd.lower()
+
+    if lowered == 'reinstall-panel':
+        user = get_user(username)
+        if not user or user.get('role') != 'admin':
+            add_console_line('[REINSTALL] Admin access required.', username)
+            return {'success': False, 'message': 'Admin access required'}
+
+        with _reinstall_lock:
+            if _reinstall_state['running']:
+                add_console_line('[REINSTALL] A reinstall is already running.', username)
+                return {'success': False, 'message': 'Reinstall already running'}
+            _reinstall_pending[username] = time.time() + REINSTALL_CONFIRM_SECONDS
+
+        add_console_line(f'> {cmd}', username)
+        add_console_line('[REINSTALL] WARNING: this will delete the database, panel data and the HPNMP server files.', username)
+        add_console_line('[REINSTALL] A clean HappinessMP server will be downloaded automatically.', username)
+        add_console_line('[REINSTALL] Your current admin account will be kept, so no setup wizard is needed.', username)
+        add_console_line(
+            f'[REINSTALL] Type {REINSTALL_CONFIRM_WORD} within {REINSTALL_CONFIRM_SECONDS} seconds to continue.',
+            username
+        )
+        return {'success': True, 'message': f'Type {REINSTALL_CONFIRM_WORD} to continue'}
+
+    if lowered == REINSTALL_CONFIRM_WORD.lower() and _reinstall_pending_active(username):
+        with _reinstall_lock:
+            _reinstall_pending.pop(username, None)
+            if _reinstall_state['running']:
+                return {'success': False, 'message': 'Reinstall already running'}
+            _reinstall_state['running'] = True
+            _reinstall_state['started_at'] = time.time()
+
+        add_console_line(f'> {cmd}', username)
+        add_console_line('[REINSTALL] Confirmed. Starting clean reinstall...', username)
+        threading.Thread(target=_run_panel_reinstall, args=(username,), daemon=True).start()
+        return {'success': True, 'message': 'Clean reinstall started'}
+
+    return None
+
+
 def _safe_json_load(path: Path, default):
     try:
         if path.exists():
@@ -2963,7 +3162,11 @@ def _is_newer_version(new: str, current: str) -> bool:
     new_t = _normalize_version(new)
     cur_t = _normalize_version(current)
     if new_t and cur_t:
-        return new_t > cur_t
+        # Treat "0.1" and "0.1.0" as the same release.
+        width = max(len(new_t), len(cur_t))
+        new_padded = new_t + (0,) * (width - len(new_t))
+        cur_padded = cur_t + (0,) * (width - len(cur_t))
+        return new_padded > cur_padded
     return str(new) != str(current)
 
 
@@ -3066,6 +3269,40 @@ def _resolve_happiness_release(update_cfg: dict = None):
     return None
 
 
+def _release_matches_branch(release: dict, branch: str) -> bool:
+    """Return True when a GitHub release belongs to the given platform branch.
+
+    Releases are tagged inconsistently (``0.1.0``, ``0.1.0-linux``,
+    ``0.0.5-windows``), and sometimes the platform only appears in the release
+    name. Accept any of those forms, but never a release for the other platform.
+    """
+    branch = (branch or '').strip().lower()
+    tag = str(release.get('tag_name') or '').strip().lower()
+    name = str(release.get('name') or '').strip().lower()
+    target = str(release.get('target_commitish') or '').strip().lower()
+
+    if tag.endswith('-windows') or name.endswith('-windows'):
+        return False
+    if tag.endswith(f'-{branch}') or name.endswith(f'-{branch}'):
+        return True
+    if target == branch:
+        return True
+    # Plain version tags (e.g. "0.1.0") are shared across platforms, but only
+    # trust them when they are not explicitly attached to another branch.
+    if target and target != branch:
+        return False
+    return '-' not in tag
+
+
+def _clean_release_version(tag: str) -> str:
+    version = str(tag or '').strip()
+    lowered = version.lower()
+    for suffix in ('-linux', '-windows'):
+        if lowered.endswith(suffix):
+            return version[:-len(suffix)]
+    return version
+
+
 def check_for_updates(force: bool = False):
     with update_lock:
         if update_state['checking'] and not force:
@@ -3090,17 +3327,15 @@ def check_for_updates(force: bool = False):
             data = _fetch_json(api_url)
             if isinstance(data, list):
                 for release in data:
-                    tag = release.get('tag_name') or ''
-                    if (
-                        not release.get('draft', True)
-                        and not release.get('prerelease', False)
-                        and tag.endswith(f'-{BRANCH}')
-                    ):
-                        panel_latest = tag
-                        panel_zip = release.get('zipball_url') or ''
-                        panel_release_url = release.get('html_url') or ''
-                        panel_available = _is_newer_version(panel_latest, panel_current)
-                        break
+                    if release.get('draft') or release.get('prerelease'):
+                        continue
+                    if not _release_matches_branch(release, BRANCH):
+                        continue
+                    panel_latest = _clean_release_version(release.get('tag_name'))
+                    panel_zip = release.get('zipball_url') or ''
+                    panel_release_url = release.get('html_url') or ''
+                    panel_available = _is_newer_version(panel_latest, panel_current)
+                    break
         except Exception as e:
             errors.append(f'Panel update check failed: {e}')
 
@@ -3198,6 +3433,7 @@ def get_update_payload():
         state.setdefault('panel', {})['current'] = _load_panel_version()
     run_state = _load_update_run_state()
     state['available'] = bool(state['panel']['available'] or state['happiness']['available'])
+    state['updating'] = bool(run_state.get('running'))
     state['run'] = run_state
     return state
 
@@ -5206,16 +5442,21 @@ def api_command():
     
     global server_process
 
+    data = request.json or {}
+    command = str(data.get('command', '') or '')
+
+    if len(command) > 1000:
+        return jsonify({'success': False, 'message': 'Command too long (max 1000 chars)'})
+
+    panel_response = handle_panel_console_command(command, session['username'])
+    if panel_response is not None:
+        return jsonify(panel_response)
+
     if not server_state['running']:
         return jsonify({'success': False, 'message': 'Server is not running'})
 
     if server_state['attached']:
         return jsonify({'success': False, 'message': 'Cannot send commands to attached process'})
-
-    command = request.json.get('command', '')
-
-    if len(command) > 1000:
-        return jsonify({'success': False, 'message': 'Command too long (max 1000 chars)'})
 
     try:
         if server_process and server_process.stdin:
