@@ -56,7 +56,7 @@ interface HmpSettings {
 }
 
 const DEFAULT_HMP_SETTINGS: HmpSettings = {
-  hostaddress: '127.0.0.1',
+  hostaddress: '::',
   hostname: 'HappinessMP Server',
   listed: true,
   listingkey: '',
@@ -199,7 +199,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
       if (s && !s.error) {
         setHmpMissing(false);
         setHmp({
-          hostaddress: String(s.hostaddress ?? '127.0.0.1'),
+          hostaddress: String(s.hostaddress ?? '::'),
           hostname: String(s.hostname ?? 'HappinessMP Server'),
           listed: s.listed === undefined ? true : Boolean(s.listed === true || s.listed === 'true'),
           listingkey: String(s.listingkey ?? ''),
@@ -233,7 +233,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
     setSaving(true);
     try {
       const payload: Record<string, any> = {
-        hostaddress: hmp.hostaddress.trim() || '127.0.0.1',
+        hostaddress: hmp.hostaddress.trim() || '::',
         hostname: hmp.hostname.trim() || 'HappinessMP Server',
         listed: hmp.listed,
         listingkey: hmp.listingkey.trim(),
@@ -553,7 +553,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                 <div>
                   <Card.Title className="text-sm font-bold text-white">Network &amp; Ports</Card.Title>
                   <Card.Description className="text-xs text-zinc-400 mt-0.5">
-                    IP binding and UDP/TCP ports (recommended: 9999 &amp; 9998).
+                    Public listing needs a public bind address and open ports (9999 TCP/UDP, 9998 UDP).
                   </Card.Description>
                 </div>
                 <div className="flex items-center gap-2">
@@ -561,7 +561,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                     size="sm"
                     variant="secondary"
                     onPress={() =>
-                      setHmp((p) => ({ ...p, hostaddress: '127.0.0.1', port: '9999', relayport: '9998' }))
+                      setHmp((p) => ({ ...p, hostaddress: '::', port: '9999', relayport: '9998' }))
                     }
                     className="rounded-xl"
                   >
@@ -589,7 +589,7 @@ export function SettingsTab({ t, onNotify, serverRunning = false, onRestart }: S
                   >
                     <Label className="text-xs font-semibold text-zinc-200 mb-1">Bind Address (hostaddress)</Label>
                     <Input
-                      placeholder="127.0.0.1"
+                      placeholder="::"
                       className="bg-[#141416] border border-white/15 text-white font-mono rounded-xl"
                     />
                   </TextField>

@@ -4369,7 +4369,7 @@ def api_set_settings():
             value = data.get(key, default)
             data[key] = value if isinstance(value, bool) else str(value).strip().lower() in ('true', '1', 'yes')
 
-        data.setdefault('hostaddress', '127.0.0.1')
+        data.setdefault('hostaddress', '::')
         data.setdefault('hostname', 'HappinessMP Server')
         data.setdefault('listingkey', '')
         data.setdefault('statstoken', '')

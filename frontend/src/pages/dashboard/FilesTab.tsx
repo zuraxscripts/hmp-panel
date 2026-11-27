@@ -248,7 +248,7 @@ export function FilesTab({ t, onNotify, serverRunning = false, onRestart, canEdi
   return (
     <>
       <Card className="overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-[0_20px_70px_rgba(0,0,0,0.25)]">
-        <Card.Header className="flex flex-col gap-4 border-b border-white/10 bg-gradient-to-br from-white/[0.045] to-transparent px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+        <Card.Header className="flex flex-col gap-4 border-b border-white/10 bg-[#0a0a0a] px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-400/20 bg-sky-400/10 text-sky-300">
               <FolderOpen className="h-5 w-5" />

@@ -12,7 +12,11 @@ interface ConsoleTabProps {
   onNotify?: (msg: string) => void;
 }
 
-const QUICK_COMMANDS = ['help', 'status', 'players', 'version'];
+// HappinessMP server console commands documented at happinessmp.net/docs/server/commands.
+const QUICK_COMMANDS = [
+  { command: 'help', description: 'Show available server commands' },
+  { command: 'stats', description: 'Show uptime, players, tick times, network and resource state' },
+];
 
 export function ConsoleTab({ lines, canSend, t, onClear, onSendCommand, onNotify }: ConsoleTabProps) {
   const [cmd, setCmd] = useState('');
@@ -139,14 +143,15 @@ export function ConsoleTab({ lines, canSend, t, onClear, onSendCommand, onNotify
         {canSend && (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] text-zinc-500 mr-1">Quick commands:</span>
-            {QUICK_COMMANDS.map((q) => (
+            {QUICK_COMMANDS.map(({ command, description }) => (
               <button
-                key={q}
+                key={command}
                 type="button"
-                onClick={() => handleSend(undefined, q)}
+                title={description}
+                onClick={() => handleSend(undefined, command)}
                 className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-[#141416] border border-white/10 text-zinc-300 hover:bg-white hover:text-black hover:border-white transition-colors cursor-pointer"
               >
-                /{q}
+                {command}
               </button>
             ))}
           </div>
