@@ -60,6 +60,9 @@ def _set_panel_port(value):
 
 
 def _get_panel_host():
+    configured_host = (os.getenv('HPM_PANEL_HOST') or '').strip()
+    if configured_host:
+        return configured_host.rstrip('/')
     return f'http://127.0.0.1:{PANEL_PORT}'
 
 
@@ -354,12 +357,12 @@ def _update_connector_config(server_dir: Path, panel_secret: str, panel_host: st
     text = server_lua.read_text(encoding='utf-8', errors='ignore')
     text, host_count = re.subn(
         r'(?m)^local\s+PANEL_HOST\s*=.*$',
-        f'local PANEL_HOST = "{panel_host}"',
+        lambda _: f'local PANEL_HOST = "{panel_host}"',
         text
     )
     text, secret_count = re.subn(
         r'(?m)^local\s+PANEL_SECRET\s*=.*$',
-        f'local PANEL_SECRET = "{panel_secret}"',
+        lambda _: f'local PANEL_SECRET = "{panel_secret}"',
         text
     )
     if host_count == 0:

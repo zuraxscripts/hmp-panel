@@ -248,6 +248,9 @@ def _panel_port_or_default(value):
 
 
 def get_panel_host():
+    configured_host = (os.getenv('HPM_PANEL_HOST') or '').strip()
+    if configured_host:
+        return configured_host.rstrip('/')
     return f'http://127.0.0.1:{PANEL_PORT}'
 
 setup_state = {
@@ -2376,6 +2379,14 @@ def start_server(username):
         if not os.path.exists(server_path):
             return {'success': False, 'message': f'Server executable not found: {server_path}'}
 
+        connector_file = Path(get_server_dir()) / 'resources' / 'hpm-connector' / 'server.lua'
+        if connector_file.is_file():
+            try:
+                update_connector_config(panel_config.get('panel_secret') or 'changeme', get_panel_host())
+                add_console_line('[Panel] hpm-connector configuration synced.', username)
+            except Exception as e:
+                add_console_line(f'[Panel] Could not sync hpm-connector configuration: {e}', username)
+
         try:
             os.chmod(server_path, 0o755)
         except Exception:
@@ -2985,18 +2996,18 @@ def update_connector_config(panel_secret: str, panel_host: str = None):
     text = server_lua.read_text(encoding='utf-8', errors='ignore')
     text, host_count = re.subn(
         r'(?m)^local\s+PANEL_HOST\s*=.*$',
-        f'local PANEL_HOST = \"{panel_host}\"',
+        lambda _: f'local PANEL_HOST = \"{panel_host}\"',
         text
     )
     text, secret_count = re.subn(
         r'(?m)^local\s+PANEL_SECRET\s*=.*$',
-        f'local PANEL_SECRET = \"{panel_secret}\"',
+        lambda _: f'local PANEL_SECRET = \"{panel_secret}\"',
         text
     )
     if host_count == 0:
-        text = f'local PANEL_HOST = \"{panel_host}\"\\n' + text
+        text = f'local PANEL_HOST = \"{panel_host}\"\n' + text
     if secret_count == 0:
-        text = f'local PANEL_SECRET = \"{panel_secret}\"\\n' + text
+        text = f'local PANEL_SECRET = \"{panel_secret}\"\n' + text
     server_lua.write_text(text, encoding='utf-8')
     _setup_update(message='hpm-connector server.lua updated with panel secret')
 

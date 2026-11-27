@@ -286,6 +286,7 @@ Runtime environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PANEL_PORT` / `PORT` | `20000` | Panel HTTP port |
+| `HPM_PANEL_HOST` | `http://127.0.0.1:<panel port>` | Connector base URL when the game server cannot reach the panel on localhost |
 | `PANEL_PRODUCTION` | `true` | Enables production defaults |
 | `PANEL_ACCESS_LOGS` | `false` in production | Controls HTTP access logging |
 | `PANEL_FORCE_HTTPS` | `false` | Redirects HTTP to HTTPS when enabled |
