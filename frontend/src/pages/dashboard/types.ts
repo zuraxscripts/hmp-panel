@@ -34,7 +34,8 @@ export interface FileEntry {
 }
 
 export interface PlayerEntry {
-  server_id: number | string;
+  serverId: number | string;
+  playerId?: string;
   name: string;
   ping?: number;
   ip?: string;

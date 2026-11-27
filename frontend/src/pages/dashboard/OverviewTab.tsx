@@ -493,14 +493,14 @@ export function OverviewTab({
                 <div className="flex flex-col gap-1.5">
                   {players.slice(0, 5).map((p) => (
                     <div
-                      key={p.server_id}
+                      key={p.serverId}
                       className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#141416] border border-white/6"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
                         <span className="text-xs font-semibold text-white truncate">{p.name}</span>
                       </div>
-                      <span className="text-[11px] font-mono text-zinc-400 shrink-0">#{p.server_id}</span>
+                      <span className="text-[11px] font-mono text-zinc-400 shrink-0">#{p.serverId}</span>
                     </div>
                   ))}
                 </div>

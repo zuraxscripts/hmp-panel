@@ -85,7 +85,7 @@ export function ResourcesTab({ kind, t, onNotify }: ResourcesTabProps) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {filtered.map((item) => {
-              const isRunning = item.running || item.status === 'running';
+              const isRunning = item.running === true || ['running', 'started'].includes(item.status?.toLowerCase() || '');
               return (
                 <div
                   key={item.name}

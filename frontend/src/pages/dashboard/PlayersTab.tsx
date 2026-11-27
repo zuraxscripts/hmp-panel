@@ -71,22 +71,22 @@ export function PlayersTab({ players, t, onRefreshPlayers, onNotify }: PlayersTa
     } else if (mode === 'message' && player) {
       res = await apiFetch('/api/players/message', {
         method: 'POST',
-        body: JSON.stringify({ server_id: player.server_id, message: reason, duration: Number(duration) || 5 }),
+        body: JSON.stringify({ serverId: player.serverId, message: reason, duration: Number(duration) || 5 }),
       });
     } else if (mode === 'warn' && player) {
       res = await apiFetch('/api/players/warn', {
         method: 'POST',
-        body: JSON.stringify({ server_id: player.server_id, reason }),
+        body: JSON.stringify({ serverId: player.serverId, reason }),
       });
     } else if (mode === 'kick' && player) {
       res = await apiFetch('/api/players/kick', {
         method: 'POST',
-        body: JSON.stringify({ server_id: player.server_id, reason }),
+        body: JSON.stringify({ serverId: player.serverId, reason }),
       });
     } else if (mode === 'ban' && player) {
       res = await apiFetch('/api/players/ban', {
         method: 'POST',
-        body: JSON.stringify({ server_id: player.server_id, reason }),
+        body: JSON.stringify({ serverId: player.serverId, reason }),
       });
     }
 
@@ -108,14 +108,14 @@ export function PlayersTab({ players, t, onRefreshPlayers, onNotify }: PlayersTa
 
   const q = query.trim().toLowerCase();
   const filteredPlayers = players.filter(
-    (p) => p.name.toLowerCase().includes(q) || String(p.server_id).includes(q)
+    (p) => p.name.toLowerCase().includes(q) || String(p.serverId).includes(q)
   );
 
   return (
     <div className="flex flex-col gap-4">
       <Tabs defaultSelectedKey="online" className="w-full">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <Tabs.List className="bg-[#0d0d0d] border border-white/10 p-1 rounded-xl w-full sm:w-auto">
+        <div className="grid min-w-0 grid-cols-1 gap-3 mb-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+          <Tabs.List className="min-w-0 w-full bg-[#0d0d0d] border border-white/10 p-1 rounded-xl">
             <Tabs.Tab id="online" className="text-xs font-semibold px-4 py-1.5 rounded-lg flex-1 sm:flex-initial">
               {t('players_online', 'Online')} ({players.length})
               <Tabs.Indicator className="rounded-lg" />
@@ -126,13 +126,13 @@ export function PlayersTab({ players, t, onRefreshPlayers, onNotify }: PlayersTa
             </Tabs.Tab>
           </Tabs.List>
 
-          <div className="flex items-center gap-2">
-            <SearchField value={query} onChange={setQuery} className="flex-1 sm:w-48">
-              <SearchField.Group className="bg-[#111111] border border-white/15 rounded-xl h-9 px-2.5">
+          <div className="flex min-w-0 w-full items-center gap-2 xl:w-auto">
+            <SearchField value={query} onChange={setQuery} className="min-w-0 flex-1 xl:w-48 xl:flex-none">
+              <SearchField.Group className="min-w-0 w-full bg-[#111111] border border-white/15 rounded-xl h-9 px-2.5">
                 <SearchField.SearchIcon className="text-zinc-400 w-3.5 h-3.5" />
-                <SearchField.Input
+                  <SearchField.Input
                   placeholder="Search player..."
-                  className="text-xs text-white placeholder:text-zinc-500"
+                    className="min-w-0 text-xs text-white placeholder:text-zinc-500"
                 />
                 <SearchField.ClearButton />
               </SearchField.Group>
@@ -182,14 +182,14 @@ export function PlayersTab({ players, t, onRefreshPlayers, onNotify }: PlayersTa
                   <div className="flex flex-col gap-2 sm:hidden">
                     {filteredPlayers.map((p) => (
                       <div
-                        key={String(p.server_id)}
+                        key={String(p.serverId)}
                         className="p-3.5 rounded-xl bg-[#0d0d0d] border border-white/10 flex flex-col gap-2.5"
                       >
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="text-xs font-bold text-white">{p.name}</div>
                             <div className="text-[11px] text-zinc-400 font-mono">
-                              ID {p.server_id} • {p.ping ?? '-'} ms • Session {p.session ?? 0}
+                              ID {p.serverId} • {p.ping ?? '-'} ms • Session {p.session ?? 0}
                             </div>
                           </div>
                         </div>
@@ -257,8 +257,8 @@ export function PlayersTab({ players, t, onRefreshPlayers, onNotify }: PlayersTa
                       </thead>
                       <tbody className="divide-y divide-white/8">
                         {filteredPlayers.map((p) => (
-                          <tr key={String(p.server_id)} className="hover:bg-white/[0.03]">
-                            <td className="p-3.5 font-mono text-zinc-300">{p.server_id}</td>
+                          <tr key={String(p.serverId)} className="hover:bg-white/[0.03]">
+                            <td className="p-3.5 font-mono text-zinc-300">{p.serverId}</td>
                             <td className="p-3.5 font-semibold text-white">{p.name}</td>
                             <td className="p-3.5 font-mono text-zinc-400">{p.ping ?? '-'} ms</td>
                             <td className="p-3.5">
